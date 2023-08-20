@@ -99,14 +99,18 @@ func parseExpression(parser *tokenParser) (Statement, error) {
 
 func parseAdditiveExpression(parser *tokenParser) (Statement, error) {
 	left, err := parseMultiplicativeExpression(parser)
+	mutableLeft := left // Change this variable
 	leftPtr := &left
-	newLeft := left
 
 	if err != nil {
 		return Statement{}, err
 	}
 
 	for {
+		if parser.isDone() {
+			break
+		}
+
 		token := parser.current()
 
 		if token.Type != Addition && token.Type != Subtraction {
@@ -127,29 +131,34 @@ func parseAdditiveExpression(parser *tokenParser) (Statement, error) {
 			return Statement{}, err
 		}
 
-		newLeft = Statement{
+		mutableLeft = Statement{
 			Type:     BinaryExpression,
 			Left:     leftPtr,
 			Right:    rightPtr,
 			Operator: operation,
 		}
-		leftPtr = &newLeft
+		left := mutableLeft
+		leftPtr = &left
 	}
 
-	return newLeft, nil
+	return mutableLeft, nil
 	//return parsePrimaryExpression(parser)
 }
 
 func parseMultiplicativeExpression(parser *tokenParser) (Statement, error) {
 	left, err := parsePrimaryExpression(parser)
+	mutableLeft := left // Change this variable
 	leftPtr := &left
-	newLeft := left
 
 	if err != nil {
 		return Statement{}, err
 	}
 
 	for {
+		if parser.isDone() {
+			break
+		}
+
 		token := parser.current()
 
 		if token.Type != Multiplication && token.Type != Division && token.Type != Modulus {
@@ -172,16 +181,17 @@ func parseMultiplicativeExpression(parser *tokenParser) (Statement, error) {
 			return Statement{}, err
 		}
 
-		newLeft = Statement{
+		mutableLeft = Statement{
 			Type:     BinaryExpression,
 			Left:     leftPtr,
 			Right:    rightPtr,
 			Operator: operation,
 		}
-		leftPtr = &newLeft
+		left := mutableLeft
+		leftPtr = &left
 	}
 
-	return newLeft, nil
+	return mutableLeft, nil
 	//return parsePrimaryExpression(parser)
 }
 
@@ -191,6 +201,11 @@ func parsePrimaryExpression(parser *tokenParser) (Statement, error) {
 	token := parser.current()
 
 	switch token.Type {
+	case Null:
+		parser.consume()
+		return Statement{
+			Type: NullExpression,
+		}, nil
 	case Identifier:
 		parser.consume()
 		return Statement{
@@ -221,9 +236,162 @@ func parsePrimaryExpression(parser *tokenParser) (Statement, error) {
 		parser.consume()
 
 		return wrappedExpression, nil
+	case Function:
+		parser.consume() // Consume function keyword
+
+		// Get identifier
+		current := parser.consume()
+
+		if current.Type != Identifier {
+			return Statement{}, parseError(current, "No identifier for function declaration given")
+		}
+
+		name := current.Value
+
+		// Check for parenthesis
+		current = parser.consume()
+
+		if current.Type != OpenParenthesis {
+			return Statement{}, parseError(current, "Open parenthesis expected for function declaration")
+		}
+
+		// Check for arguments
+		argTypes := []LangType{}
+		argNames := []string{}
+
+		mode := 0
+
+		for {
+			current = parser.current()
+
+			if parser.isDone() {
+				break
+			}
+
+			if current.Type == CloseParenthesis {
+				parser.consume()
+				break
+			}
+
+			if current.Type != Identifier {
+				return Statement{}, parseError(current, "Expected identifier or type for function arguments")
+			}
+
+			parser.consume()
+
+			// TODO: check for actual types
+			if mode == 0 {
+				langType, err := parseType(current)
+
+				if err != nil {
+					return Statement{}, err
+				}
+
+				argTypes = append(argTypes, langType)
+				mode = 1
+			} else {
+				argNames = append(argNames, current.Value)
+
+				mode = 0
+			}
+		}
+
+		if len(argNames) != len(argTypes) {
+			return Statement{}, parseError(parser.before(), "No identifier for type set in function declaration")
+		}
+
+		returnTypes := []LangType{}
+
+		for {
+			current = parser.current()
+
+			if parser.isDone() {
+				break
+			}
+
+			if current.Type == OpenCurlyBracket {
+				break
+			}
+
+			if current.Type != Identifier {
+				break
+			}
+
+			current := parser.consume()
+
+			langType, err := parseType(current)
+
+			if err != nil {
+				return Statement{}, err
+			}
+
+			fmt.Println(parser.index, current)
+
+			returnTypes = append(returnTypes, langType)
+		}
+
+		// Default to void
+		if len(returnTypes) == 0 {
+			returnTypes = append(returnTypes, Void)
+		}
+
+		// Consume curly bracket
+		if current.Type != OpenCurlyBracket {
+			return Statement{}, parseError(current, "Function body needs to be opened with {")
+		}
+
+		parser.consume()
+
+		children := []Statement{}
+
+		// Check inside
+		for {
+			current = parser.current()
+
+			if current.Type == CloseCurlyBracket {
+				parser.consume()
+				break
+			}
+
+			statement, err := parseExpression(parser)
+
+			if err != nil {
+				return Statement{}, err
+			}
+
+			// Do not allow function declaration in functions
+			if statement.Type == FunctionDeclaration {
+				return Statement{}, parseError(current, "Cannot declare function inside of function")
+			}
+
+			children = append(children, statement)
+
+		}
+
+		functionDecl := Statement{
+			Type:        FunctionDeclaration,
+			Value:       name,
+			ReturnTypes: returnTypes,
+			ArgTypes:    argTypes,
+			ArgNames:    argNames,
+			Children:    children,
+		}
+
+		return functionDecl, nil
 	}
 
 	return expression, parseError(token, "Unexpected token")
+}
+
+func parseType(token Token) (LangType, error) {
+	switch token.Value {
+	case "int":
+		return Int, nil
+	case "float":
+		return Float, nil
+	default:
+		return Void, parseError(token, "Unknown type")
+	}
 }
 
 func parseError(token Token, message string) error {

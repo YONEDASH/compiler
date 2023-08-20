@@ -22,4 +22,8 @@ func main() {
 	}
 
 	PrintAST(statement, 0)
+
+	c := GenerateC(statement, 0)
+
+	fmt.Println(c)
 }

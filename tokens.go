@@ -10,7 +10,8 @@ func _tokenTypeGet() TokenType {
 }
 
 const (
-	EOF TokenType = iota
+	EOF  TokenType = iota
+	Null           // There will be no null in this language?
 	Number
 	Identifier
 	Equals // add plus equals etc..
@@ -35,8 +36,9 @@ const (
 )
 
 var Keywords = map[string]TokenType{
-	"let": Let,
-	"fn":  Function,
+	"null": Null,
+	"let":  Let,
+	"fn":   Function,
 }
 
 type Token struct {

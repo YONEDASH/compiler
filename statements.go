@@ -6,9 +6,11 @@ type StatementType int
 
 const (
 	Root StatementType = iota
+	NullExpression
 	NumberExpression
 	IdentifierExpression
 	BinaryExpression
+	FunctionDeclaration
 )
 
 type BinaryOperation int
@@ -22,30 +24,34 @@ const (
 )
 
 type Statement struct {
-	Type     StatementType
-	Children []Statement     // Root
-	Left     *Statement      // Binary Expression
-	Right    *Statement      // ^
-	Operator BinaryOperation // ^
-	Range    string          // Range of NumberExpression (int, float etc)
-	Value    string          // NumberExpression: num value | IdentifierExpression: name | BinaryExpression: operator
+	Type        StatementType
+	Children    []Statement     // Root
+	Left        *Statement      // Binary Expression
+	Right       *Statement      // ^
+	Operator    BinaryOperation // ^
+	Range       string          // Range of NumberExpression (int, float etc)
+	Value       string          // NumberExpression: num value | IdentifierExpression: name | BinaryExpression: operator
+	ArgTypes    []LangType      // Function Declaration
+	ArgNames    []string        // ^
+	ReturnTypes []LangType      // ^
 }
 
 // Debug
 
 func PrintAST(statement Statement, i int) {
-	if i > 100 {
+	// Cap to depth of 10
+	if i > 10 {
 		return
 	}
 
 	prefix := ""
 	for j := 0; j < i; j++ {
-		prefix += "    "
+		prefix += " "
 	}
 
 	fmt.Println(prefix, "Type:", statement.Type)
 
-	if statement.Type == NumberExpression || statement.Type == IdentifierExpression {
+	if statement.Type == NumberExpression || statement.Type == IdentifierExpression || statement.Type == FunctionDeclaration {
 		fmt.Println(prefix, "Value:", statement.Value)
 	}
 

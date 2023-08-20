@@ -1,0 +1,116 @@
+package main
+
+var CTypes = map[LangType]string{
+	Void:  "void",
+	Int:   "int",
+	Float: "float",
+}
+
+func GenerateC(statement Statement, i int) string {
+	prefix := ""
+	for j := 0; j < i; j++ {
+		prefix += "    "
+	}
+
+	inner := ""
+	indentOffset := 0
+
+	if statement.Type == FunctionDeclaration {
+		indentOffset = 1
+		inner += prefix
+		inner += CTypes[statement.ReturnTypes[0]]
+		inner += " "
+		inner += statement.Value
+		inner += "("
+
+		argCount := len(statement.ArgNames)
+		for k := 0; k < argCount; k++ {
+			inner += CTypes[statement.ArgTypes[k]]
+			inner += " "
+			inner += statement.ArgNames[k]
+			if k != argCount-1 {
+				inner += ", "
+			}
+		}
+
+		inner += ") {"
+		inner += "\n"
+	}
+
+	if len(statement.Children) > 0 {
+		for _, child := range statement.Children {
+			inner += GenerateC(child, i+indentOffset)
+		}
+	}
+
+	if statement.Type == Root {
+		return inner
+	}
+
+	if statement.Type == FunctionDeclaration {
+		return inner + "\n" + prefix + "}"
+	}
+
+	if statement.Type == NullExpression {
+		return "NULL"
+	}
+
+	if statement.Type == NumberExpression {
+		return statement.Value
+	}
+
+	if statement.Type == IdentifierExpression {
+		return statement.Value
+	}
+
+	if statement.Type == BinaryExpression {
+		return genBinaryExpression(statement, 0)
+	}
+
+	return ""
+}
+
+func genBinaryExpression(statement Statement, i int) string {
+	left := statement.Left
+	right := statement.Right
+	operator := statement.Operator
+
+	content := ""
+
+	prioritized := operator != AdditionOperation && operator != SubtractionOperation
+
+	if i > 0 && !prioritized {
+		content += "("
+	}
+
+	if left.Type == BinaryExpression {
+		content += genBinaryExpression(*left, i+1)
+	} else {
+		content += GenerateC(*left, 0)
+	}
+
+	switch operator {
+	case AdditionOperation:
+		content += "+"
+	case SubtractionOperation:
+		content += "-"
+	case MultiplicationOperation:
+		content += "*"
+	case DivisionOperation:
+		content += "/"
+	case ModulusOperation:
+		content += "%"
+	}
+
+	if right.Type == BinaryExpression {
+		content += genBinaryExpression(*right, i+1)
+	} else {
+		content += GenerateC(*right, 0)
+	}
+
+	if i > 0 && !prioritized {
+		content += ")"
+	}
+
+	return content
+}

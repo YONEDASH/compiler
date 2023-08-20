@@ -1,1 +1,3 @@
-2 * (3 + 1)
+fn main() int {
+    g0gesiagpgjs
+}

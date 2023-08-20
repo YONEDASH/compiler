@@ -8,31 +8,8 @@ const (
 )
 
 type Statement struct {
-	Type StatementType
-}
-
-type RootStatement struct {
-	Statement
-	Children *[]Statement
-}
-
-type ExpressionStatement struct {
-	Statement
-}
-
-type BinaryExpressionStatement struct {
-	ExpressionStatement
-	Left     Statement
-	Right    Statement
-	Operator string
-}
-
-func b() {
-	bes := BinaryExpressionStatement{}
-
-	a(bes)
-}
-
-func a(a ExpressionStatement) {
-	// This should be possible
+	Type     StatementType
+	Children []Statement // Root
+	Left     *Statement  // Binary Expression
+	Right    *Statement  // ^
 }

@@ -13,4 +13,13 @@ func main() {
 	for _, token := range tokens {
 		fmt.Println(token)
 	}
+
+	statement, err := ParseTokens(tokens)
+
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	PrintAST(statement, 0)
 }

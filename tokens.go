@@ -10,7 +10,8 @@ func _tokenTypeGet() TokenType {
 }
 
 const (
-	Number TokenType = iota
+	EOF TokenType = iota
+	Number
 	Identifier
 	Equals // add plus equals etc..
 	Colon
@@ -24,10 +25,11 @@ const (
 	CloseCurlyBracket
 	OpenSquareBracket
 	CloseSquareBracket
-	Plus
-	Minus
-	Multiply
-	Divide
+	Addition
+	Subtraction
+	Multiplication
+	Division
+	Modulus
 	Let // Keywords
 	Function
 )

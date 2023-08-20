@@ -1,0 +1,1 @@
+llvm-as test.ll && llc -filetype=obj test.bc && gcc test.o && ./a.out

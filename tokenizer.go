@@ -183,27 +183,27 @@ func Tokenize(path string) ([]Token, error) {
 		}
 
 		if ch == '+' {
-			appendType(Plus, &identifier, &tokens, reader.index, string(reader.consume()))
+			appendType(Addition, &identifier, &tokens, reader.index, string(reader.consume()))
 			continue
 		}
 
 		if ch == '-' {
-			appendType(Minus, &identifier, &tokens, reader.index, string(reader.consume()))
+			appendType(Subtraction, &identifier, &tokens, reader.index, string(reader.consume()))
 			continue
 		}
 
 		if ch == '*' {
-			appendType(Multiply, &identifier, &tokens, reader.index, string(reader.consume()))
+			appendType(Multiplication, &identifier, &tokens, reader.index, string(reader.consume()))
 			continue
 		}
 
 		if ch == '/' {
-			appendType(Divide, &identifier, &tokens, reader.index, string(reader.consume()))
+			appendType(Division, &identifier, &tokens, reader.index, string(reader.consume()))
 			continue
 		}
 
-		if ch == '/' {
-			appendType(Divide, &identifier, &tokens, reader.index, string(reader.consume()))
+		if ch == '%' {
+			appendType(Modulus, &identifier, &tokens, reader.index, string(reader.consume()))
 			continue
 		}
 
@@ -251,6 +251,10 @@ func Tokenize(path string) ([]Token, error) {
 
 	// End possible missing identifier
 	safelyEndIdentifier(&identifier, &tokens, reader.length)
+
+	tokens = append(tokens, Token{
+		Type: EOF,
+	})
 
 	return tokens, nil
 }

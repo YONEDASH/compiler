@@ -1,6 +1,6 @@
 # ??? compiler
 
-Compiles .** files to C or Java.
+maybe compile/transpile .** files to C or Java.
 
 - Scopes: once a scope is no longer used, memory will be freed
 

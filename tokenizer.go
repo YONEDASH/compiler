@@ -254,7 +254,12 @@ func Tokenize(path string) ([]Token, error) {
 
 	tokens = append(tokens, Token{
 		Type: EOF,
+		Trace: &SourceTrace{
+			Index: reader.length - 1,
+		},
 	})
+
+	fillTraces(tokens, reader)
 
 	return tokens, nil
 }

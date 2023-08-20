@@ -1,6 +1,8 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+)
 
 type ParseError struct {
 	message string
@@ -97,6 +99,8 @@ func parseExpression(parser *tokenParser) (Statement, error) {
 
 func parseAdditiveExpression(parser *tokenParser) (Statement, error) {
 	left, err := parseMultiplicativeExpression(parser)
+	leftPtr := &left
+	newLeft := left
 
 	if err != nil {
 		return Statement{}, err
@@ -117,26 +121,29 @@ func parseAdditiveExpression(parser *tokenParser) (Statement, error) {
 		}
 
 		right, err := parseMultiplicativeExpression(parser)
+		rightPtr := &right
 
 		if err != nil {
 			return Statement{}, err
 		}
 
-		initialLeft := &left
-		left = Statement{
+		newLeft = Statement{
 			Type:     BinaryExpression,
-			Left:     initialLeft,
-			Right:    &right,
+			Left:     leftPtr,
+			Right:    rightPtr,
 			Operator: operation,
 		}
+		leftPtr = &newLeft
 	}
 
-	return left, nil
+	return newLeft, nil
 	//return parsePrimaryExpression(parser)
 }
 
 func parseMultiplicativeExpression(parser *tokenParser) (Statement, error) {
 	left, err := parsePrimaryExpression(parser)
+	leftPtr := &left
+	newLeft := left
 
 	if err != nil {
 		return Statement{}, err
@@ -154,26 +161,27 @@ func parseMultiplicativeExpression(parser *tokenParser) (Statement, error) {
 		operation := MultiplicationOperation
 		if operatorType == Division {
 			operation = DivisionOperation
-		} else {
+		} else if operatorType == Modulus {
 			operation = ModulusOperation
 		}
 
 		right, err := parsePrimaryExpression(parser)
+		rightPtr := &right
 
 		if err != nil {
 			return Statement{}, err
 		}
 
-		initialLeft := &left
-		left = Statement{
+		newLeft = Statement{
 			Type:     BinaryExpression,
-			Left:     initialLeft,
-			Right:    &right,
+			Left:     leftPtr,
+			Right:    rightPtr,
 			Operator: operation,
 		}
+		leftPtr = &newLeft
 	}
 
-	return left, nil
+	return newLeft, nil
 	//return parsePrimaryExpression(parser)
 }
 
@@ -195,63 +203,39 @@ func parsePrimaryExpression(parser *tokenParser) (Statement, error) {
 			Type:  NumberExpression,
 			Value: token.Value,
 		}, nil
+	case OpenParenthesis:
+		parser.consume() // Consume opening
+
+		wrappedExpression, err := parseExpression(parser)
+
+		if err != nil {
+			return Statement{}, nil
+		}
+
+		current := parser.current()
+
+		if current.Type != CloseParenthesis {
+			return Statement{}, parseError(current, "Parenthesis not closed")
+		}
+
+		parser.consume()
+
+		return wrappedExpression, nil
 	}
 
-	parser.consume()
-	return expression, unexpectedTokenError(token, "")
+	return expression, parseError(token, "Unexpected token")
 }
 
-func unexpectedTokenError(token Token, message string) error {
+func parseError(token Token, message string) error {
 	// Return error if unknown character is in source
 	trace := token.Trace
-	row, col := trace.Row, trace.Column
 
-	msg := fmt.Sprintf("Unexpected token @ %d:%d '%+v'", row, col, token)
+	if trace == nil {
+		return ParseError{message: "No trace found for error"}
+	}
+
+	row, col := trace.Row, trace.Column
+	msg := fmt.Sprintf("%s @ %d:%d >> %+v", message, row, col, token)
 
 	return ParseError{message: msg, trace: trace}
-}
-
-func PrintAST(statement Statement, i int) {
-	if i > 10 {
-		return
-	}
-
-	prefix := ""
-	for j := 0; j < i; j++ {
-		prefix += "\t"
-	}
-
-	fmt.Println(prefix, "Type:", statement.Type)
-	fmt.Println(prefix, "Value:", statement.Value)
-	fmt.Println(prefix, "Operator:", statement.Operator)
-
-	if statement.Left != nil {
-		fmt.Println(prefix, "Left: ")
-
-		if statement.Left == &statement {
-			fmt.Println(prefix, "Itself??")
-		} else {
-			PrintAST(*statement.Left, i+1)
-		}
-	}
-	if statement.Right != nil {
-		fmt.Println(prefix, "Right: ")
-
-		if statement.Right == &statement {
-			fmt.Println(prefix, "Itself??")
-		} else {
-			PrintAST(*statement.Right, i+1)
-		}
-	}
-	if len(statement.Children) > 0 {
-		fmt.Println(prefix, "Children: ")
-		for _, child := range statement.Children {
-			if &child == &statement {
-				fmt.Println(prefix, "Itself??")
-				continue
-			}
-
-			PrintAST(child, i+1)
-		}
-	}
 }

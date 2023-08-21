@@ -71,6 +71,10 @@ func ParseTokens(tokens []lexer.Token) (Statement, error) {
 			return Statement{}, err
 		}
 
+		if statement.Type < 0 {
+			continue
+		}
+
 		// fmt.Printf("%d %+v\n", parser.index, statement)
 
 		children = append(children, statement)
@@ -203,6 +207,9 @@ func parsePrimaryExpression(parser *tokenParser) (Statement, error) {
 	token := parser.current()
 
 	switch token.Type {
+	case lexer.LF:
+		parser.consume()
+		return Statement{Type: -1}, nil
 	case lexer.Null:
 		parser.consume()
 		return Statement{
@@ -242,9 +249,96 @@ func parsePrimaryExpression(parser *tokenParser) (Statement, error) {
 		return parseScope(parser)
 	case lexer.Function:
 		return parseFunction(parser)
+	case lexer.Var, lexer.Const:
+		return parseVariableDeclaration(parser)
 	}
 
 	return expression, parseError(token, "Unexpected token")
+}
+
+func parseVariableDeclaration(parser *tokenParser) (Statement, error) {
+	current := parser.current()
+
+	isConstant := current.Type == lexer.Const
+
+	// Consume keyword
+	parser.consume()
+	current = parser.current()
+
+	// Get name
+	if current.Type != lexer.Identifier {
+		return Statement{}, parseError(current, "Expected identifier for variable declaration")
+	}
+	variableName := current.Value
+
+	// Consume identifier
+	parser.consume()
+	current = parser.current()
+
+	variableType := ActualType{
+		Id: Void,
+	}
+
+	// Check if type is already assigned
+	if current.Type == lexer.Colon {
+		// Consume colon
+		parser.consume()
+		current = parser.current()
+
+		// Get type
+		if current.Type != lexer.Identifier {
+			return Statement{}, parseError(current, "Expected type for implicit variable declaration")
+		}
+
+		parsedType, err := parseType(current)
+
+		if err != nil {
+			return Statement{}, err
+		}
+
+		if parsedType.Id == Void {
+			return Statement{}, parseError(current, "Cannot assign void variable")
+		}
+
+		variableType = parsedType
+
+		// Consume type
+		parser.consume()
+	}
+
+	// Auto assign variable later
+
+	current = parser.current()
+
+	if isConstant && current.Type != lexer.Equals {
+		return Statement{}, parseError(current, "Constant variable need to be defined with a value")
+	}
+
+	value := ""
+
+	if current.Type == lexer.Equals {
+		// Consume equals
+		parser.consume()
+		current = parser.current()
+
+		// Set value
+		value = current.Value
+		parser.consume()
+
+	} else if variableType.Id == Void {
+		return Statement{}, parseError(current, "Implicit declaration of type needed if no value present")
+	}
+
+	argNames := []string{variableName}
+	argTypes := []ActualType{variableType}
+
+	return Statement{
+		Type:     VariableDeclaration,
+		Value:    value,
+		ArgNames: argNames,
+		ArgTypes: argTypes,
+		Constant: isConstant,
+	}, nil
 }
 
 func parseFunction(parser *tokenParser) (Statement, error) {
@@ -425,9 +519,27 @@ func parseType(token lexer.Token) (ActualType, error) {
 	case "void":
 		return ActualType{Id: Void}, nil
 	case "int":
+		return ActualType{Id: Int32}, nil
+	case "int8":
+		return ActualType{Id: Int8}, nil
+	case "int16":
 		return ActualType{Id: Int16}, nil
+	case "int32":
+		return ActualType{Id: Int32}, nil
+	case "int64":
+		return ActualType{Id: Int64}, nil
+	case "uint8":
+		return ActualType{Id: UnsignedInt8}, nil
+	case "uint16":
+		return ActualType{Id: UnsignedInt16}, nil
+	case "uint32":
+		return ActualType{Id: UnsignedInt32}, nil
+	case "uint64":
+		return ActualType{Id: UnsignedInt64}, nil
 	case "float":
 		return ActualType{Id: Float}, nil
+	case "double":
+		return ActualType{Id: Double}, nil
 	case "bool":
 		return ActualType{Id: Bool}, nil
 	default:

@@ -22,3 +22,9 @@ fn main() {
     printf(msg + "\n")
 }
 ```
+
+Static should prevent:
+
+- main() function from having any return values
+- check if const vars are being changed
+- check if types are defined

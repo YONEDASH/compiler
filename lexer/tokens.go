@@ -10,12 +10,14 @@ func _tokenTypeGet() TokenType {
 }
 
 const (
-	EOF  TokenType = iota
-	Null           // There will be no null in this language?
+	EOF TokenType = iota
+	LF
+	Null // There will be no null in this language?
 	Number
 	Identifier
 	Equals // add plus equals etc..
 	Colon
+	Semicolon
 	Comma
 	CompareEquals
 	CompareSmaller
@@ -32,14 +34,14 @@ const (
 	Division
 	Modulus
 	ArrowRight
-	Let // Keywords
+	Var // Keywords
 	Const
 	Function
 )
 
 var Keywords = map[string]TokenType{
 	"null":  Null,
-	"let":   Let,
+	"var":   Var,
 	"const": Const,
 	"fn":    Function,
 }

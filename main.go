@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/yonedash/comet/analysis"
 	"github.com/yonedash/comet/compiler"
@@ -39,4 +40,16 @@ func main() {
 	c := compiler.CompileC(statement)
 
 	fmt.Println(c)
+
+	// Write to test file
+	// create file
+	f, err := os.Create("test/test.c")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	// remember to close the file
+	defer f.Close()
+
+	f.WriteString(c)
 }

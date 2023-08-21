@@ -39,6 +39,10 @@ const (
 	Int16
 	Int32
 	Int64
+	UnsignedInt8
+	UnsignedInt16
+	UnsignedInt32
+	UnsignedInt64
 	Float
 	Double
 	Bool

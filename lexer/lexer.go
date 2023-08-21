@@ -142,12 +142,22 @@ func Tokenize(path string) ([]Token, error) {
 			continue
 		}
 
+		if ch == '\n' {
+			appendType(LF, &identifier, &tokens, reader.index, string(reader.consume()))
+			continue
+		}
+
 		if ch == '-' && reader.after() == '>' {
 			appendType(ArrowRight, &identifier, &tokens, reader.index, string(reader.consume())+string(reader.consume()))
 			continue
 		}
 
 		if ch == ';' {
+			appendType(Semicolon, &identifier, &tokens, reader.index, string(reader.consume()))
+			continue
+		}
+
+		if ch == ':' {
 			appendType(Colon, &identifier, &tokens, reader.index, string(reader.consume()))
 			continue
 		}

@@ -1,4 +1,4 @@
-package main
+package lexer
 
 type TokenType int
 
@@ -31,14 +31,17 @@ const (
 	Multiplication
 	Division
 	Modulus
+	ArrowRight
 	Let // Keywords
+	Const
 	Function
 )
 
 var Keywords = map[string]TokenType{
-	"null": Null,
-	"let":  Let,
-	"fn":   Function,
+	"null":  Null,
+	"let":   Let,
+	"const": Const,
+	"fn":    Function,
 }
 
 type Token struct {

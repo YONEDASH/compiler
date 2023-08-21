@@ -1,9 +1,16 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/yonedash/comet/analysis"
+	"github.com/yonedash/comet/compiler"
+	"github.com/yonedash/comet/lexer"
+	"github.com/yonedash/comet/parser"
+)
 
 func main() {
-	tokens, err := Tokenize("test.cl")
+	tokens, err := lexer.Tokenize("test.cl")
 
 	if err != nil {
 		fmt.Println(err)
@@ -14,16 +21,22 @@ func main() {
 		fmt.Println(token)
 	}
 
-	statement, err := ParseTokens(tokens)
+	statement, err := parser.ParseTokens(tokens)
 
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 
-	PrintAST(statement, 0)
+	parser.PrintAST(statement, 0)
 
-	c := GenerateC(statement, 0)
+	hints, err := analysis.AnalyseAST(statement)
+
+	for _, hint := range hints {
+		fmt.Println(hint.Message, hint.Trace)
+	}
+
+	c := compiler.CompileC(statement)
 
 	fmt.Println(c)
 }

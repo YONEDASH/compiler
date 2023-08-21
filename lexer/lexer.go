@@ -1,4 +1,4 @@
-package main
+package lexer
 
 import (
 	"bufio"
@@ -139,6 +139,11 @@ func Tokenize(path string) ([]Token, error) {
 		// Only make token a number if there was no identifier started
 		if len(identifier) == 0 && (unicode.IsDigit(ch) || ch == '.') {
 			tokens = append(tokens, number(&reader, reader.index))
+			continue
+		}
+
+		if ch == '-' && reader.after() == '>' {
+			appendType(ArrowRight, &identifier, &tokens, reader.index, string(reader.consume())+string(reader.consume()))
 			continue
 		}
 
@@ -332,14 +337,14 @@ func safelyEndIdentifier(identifier *string, tokens *[]Token, index int) {
 		return
 	}
 
+	identifierDeref := *identifier
+
 	// Check for keywords in identifier
-	if tokenType, found := Keywords[*identifier]; found {
-		appendType(tokenType, nil, tokens, index, *identifier)
+	if tokenType, found := Keywords[identifierDeref]; found {
+		appendType(tokenType, nil, tokens, index-len(identifierDeref), identifierDeref)
 		*identifier = ""
 		return
 	}
-
-	identifierDeref := *identifier
 
 	*tokens = append(*tokens, Token{
 		Type:  Identifier,

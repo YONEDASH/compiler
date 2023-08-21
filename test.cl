@@ -1,3 +1,3 @@
-fn main() int {
-    g0gesiagpgjs
+fn main(int a) -> int {
+
 }

@@ -80,6 +80,13 @@ func compileVariableDeclaration(cl *compiler, statement parser.Statement) string
 	return indent(cl) + constant + varType + " " + varName + " = " + value + ";"
 }
 
+func compileExpression(cl *compiler, statement parser.Statement) string {
+	if statement.Type == parser.NumberExpression || statement.Type == parser.IdentifierExpression {
+		return statement.Value
+	}
+
+}
+
 func genBinaryExpression(cl *compiler, statement parser.Statement, i int) string {
 	left := statement.Left
 	right := statement.Right

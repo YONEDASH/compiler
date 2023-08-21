@@ -49,18 +49,19 @@ const (
 )
 
 type Statement struct {
-	Type     StatementType
-	Children []Statement     // Root
-	Left     *Statement      // Binary Expression
-	Right    *Statement      // ^
-	Operator BinaryOperation // ^
-	Range    string          // Range of NumberExpression (int, float etc)
-	Value    string          // NumberExpression: num value | IdentifierExpression: name | BinaryExpression: operator
-	RunScope *Statement      // Function Declaration
-	ArgTypes []ActualType    // ^
-	ArgNames []string        // ^
-	Types    []ActualType    // ^ & Variable Declaration
-	Constant bool            // Variable Declaration
+	Type        StatementType
+	Children    []Statement     // Root
+	Left        *Statement      // Binary Expression
+	Right       *Statement      // ^
+	Operator    BinaryOperation // ^
+	Range       string          // Range of NumberExpression (int, float etc)
+	Value       string          // NumberExpression: num value | IdentifierExpression: name | BinaryExpression: operator
+	RunScope    *Statement      // Function Declaration
+	ArgTypes    []ActualType    // ^
+	ArgNames    []string        // ^
+	Types       []ActualType    // ^ & Variable Declaration
+	Expressions []Statement     // Variable Declaration
+	Constant    bool            // Variable Declaration
 }
 
 type StatementScope struct {

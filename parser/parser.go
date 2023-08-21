@@ -89,11 +89,20 @@ func ParseTokens(tokens []lexer.Token) (Statement, error) {
 }
 
 func parseStatement(parser *tokenParser) (Statement, error) {
-	// statement := Statement{}
+	current := parser.current()
+	switch current.Type {
+	case lexer.LF: // Ignore line feed
+		parser.consume()
+		return Statement{Type: -1}, nil
+	case lexer.OpenCurlyBracket:
+		return parseScope(parser)
+	case lexer.Function:
+		return parseFunction(parser)
+	case lexer.Var, lexer.Const:
+		return parseVariableDeclaration(parser)
+	}
 
-	// Implement later
-
-	return parseExpression(parser)
+	return Statement{}, parseError(current, "Unexpected token, statement expected")
 }
 
 func parseExpression(parser *tokenParser) (Statement, error) {
@@ -207,14 +216,6 @@ func parsePrimaryExpression(parser *tokenParser) (Statement, error) {
 	token := parser.current()
 
 	switch token.Type {
-	case lexer.LF:
-		parser.consume()
-		return Statement{Type: -1}, nil
-	case lexer.Null:
-		parser.consume()
-		return Statement{
-			Type: NullExpression,
-		}, nil
 	case lexer.Identifier:
 		parser.consume()
 		return Statement{
@@ -245,15 +246,9 @@ func parsePrimaryExpression(parser *tokenParser) (Statement, error) {
 		parser.consume()
 
 		return wrappedExpression, nil
-	case lexer.OpenCurlyBracket:
-		return parseScope(parser)
-	case lexer.Function:
-		return parseFunction(parser)
-	case lexer.Var, lexer.Const:
-		return parseVariableDeclaration(parser)
 	}
 
-	return expression, parseError(token, "Unexpected token")
+	return expression, parseError(token, "Unexpected token, expected expression")
 }
 
 func parseVariableDeclaration(parser *tokenParser) (Statement, error) {
@@ -314,16 +309,20 @@ func parseVariableDeclaration(parser *tokenParser) (Statement, error) {
 		return Statement{}, parseError(current, "Constant variable need to be defined with a value")
 	}
 
-	value := ""
+	exp := Statement{}
 
 	if current.Type == lexer.Equals {
 		// Consume equals
 		parser.consume()
-		current = parser.current()
 
-		// Set value
-		value = current.Value
-		parser.consume()
+		// Parse expression
+		expression, err := parseExpression(parser)
+
+		if err != nil {
+			return Statement{}, err
+		}
+
+		exp = expression
 
 	} else if variableType.Id == Void {
 		return Statement{}, parseError(current, "Implicit declaration of type needed if no value present")
@@ -331,13 +330,14 @@ func parseVariableDeclaration(parser *tokenParser) (Statement, error) {
 
 	argNames := []string{variableName}
 	argTypes := []ActualType{variableType}
+	expressions := []Statement{exp}
 
 	return Statement{
-		Type:     VariableDeclaration,
-		Value:    value,
-		ArgNames: argNames,
-		ArgTypes: argTypes,
-		Constant: isConstant,
+		Type:        VariableDeclaration,
+		Expressions: expressions,
+		ArgNames:    argNames,
+		ArgTypes:    argTypes,
+		Constant:    isConstant,
 	}, nil
 }
 
@@ -568,7 +568,7 @@ func parseScope(parser *tokenParser) (Statement, error) {
 			break
 		}
 
-		statement, err := parseExpression(parser)
+		statement, err := parseStatement(parser)
 
 		if err != nil {
 			return Statement{}, err

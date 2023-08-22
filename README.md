@@ -4,6 +4,7 @@ work in progress!
 
 maybe compile/transpile .** files to C or Java.
 
+- main fn should be a void. exit code with Exit(0)
 - first parse root (note function) THEN parse functions
 - parse arrays as identifiers: IdentifierExpression with ArraySizes set example: int[4][5] is ArraySizes: []int{ 4, 5}
 - memory freeing and allocation -> variables should only live in scope: destroy memory once scope is left

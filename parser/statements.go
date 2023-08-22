@@ -1,6 +1,10 @@
 package parser
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/yonedash/comet/lexer"
+)
 
 type StatementType int
 
@@ -13,6 +17,7 @@ const (
 	FunctionDeclaration
 	VariableDeclaration
 	ScopeDeclaration
+	VariableAssignment
 )
 
 type BinaryOperation int
@@ -58,10 +63,11 @@ type Statement struct {
 	Value       string          // NumberExpression: num value | IdentifierExpression: name | BinaryExpression: operator
 	RunScope    *Statement      // Function Declaration
 	ArgTypes    []ActualType    // ^
-	ArgNames    []string        // ^
+	ArgNames    []string        // ^ & Assignment
 	Types       []ActualType    // ^ & Variable Declaration
-	Expressions []Statement     // Variable Declaration
+	Expressions []Statement     // Variable Declaration & Assignment
 	Constant    bool            // Variable Declaration
+	Trace       lexer.SourceTrace
 }
 
 type StatementScope struct {

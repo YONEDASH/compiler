@@ -3,39 +3,111 @@ package compiler
 import (
 	"fmt"
 
+	"github.com/yonedash/comet/lexer"
 	"github.com/yonedash/comet/parser"
 )
+
+type CompileError struct {
+	message string
+	trace   lexer.SourceTrace
+}
+
+func (e CompileError) Error() string {
+	return e.message
+}
+
+func compileError(statement parser.Statement, message string) error {
+	// Return error if unknown character is in source
+	trace := statement.Trace
+
+	row, col := trace.Row, trace.Column
+	msg := fmt.Sprintf("%s @ %d:%d >> %+v", message, row, col, statement)
+
+	return CompileError{message: msg, trace: trace}
+}
 
 type compiler struct {
 	head            string
 	prepend         string
 	indent          int
 	booleanImported bool
+	currentScope    scope
 }
 
-func CompileC(root parser.Statement) string {
-	cl := &compiler{indent: -1}
-	content := compile(cl, root)
-	return cl.head + cl.prepend + content
+type scope struct {
+	parent *scope
+	vars   []scopeVar
+	fns    []scopeFn
 }
 
-func compile(cl *compiler, statement parser.Statement) string {
+type scopeVar struct {
+	varType     parser.ActualType
+	varName     string
+	varConstant bool
+	varValue    string
+}
+
+type scopeFn struct {
+	fnTypes []parser.ActualType
+	fnName  string
+}
+
+func (s scope) getVariable(name string) *scopeVar {
+	for _, variable := range s.vars {
+		if variable.varName == name {
+			return &variable
+		}
+	}
+
+	if s.parent != nil {
+		return s.parent.getVariable(name)
+	}
+
+	return nil
+}
+
+func (s scope) getFunction(name string) *scopeFn {
+	for _, function := range s.fns {
+		if function.fnName == name {
+			return &function
+		}
+	}
+
+	if s.parent != nil {
+		return s.parent.getFunction(name)
+	}
+
+	return nil
+}
+
+func CompileC(root parser.Statement) (string, error) {
+	cl := &compiler{indent: -1, currentScope: scope{}}
+	content, err := compile(cl, root)
+
+	if err != nil {
+		return "", err
+	}
+
+	return cl.head + cl.prepend + content, nil
+}
+
+func compile(cl *compiler, statement parser.Statement) (string, error) {
 	switch statement.Type {
 	case -1: // skip LF -> TODO: fix in parser to not be passed here
-		return ""
+		return "", nil
 	case parser.Root, parser.ScopeDeclaration:
 		return compileScope(cl, statement)
 	case parser.FunctionDeclaration:
 		return compileFunction(cl, statement)
 	case parser.VariableDeclaration:
 		return compileVariableDeclaration(cl, statement)
-	case parser.BinaryExpression:
-		return genBinaryExpression(cl, statement, 0)
-	case parser.NumberExpression:
-		return statement.Value
+	case parser.VariableAssignment:
+		return compileVariableAssignment(cl, statement)
+	case parser.BinaryExpression, parser.IdentifierExpression, parser.NumberExpression:
+		return compileExpression(cl, statement)
 	}
 
-	return indent(cl) + fmt.Sprintf("// UNKNOWN STATEMENT %v", statement)
+	return indent(cl) + fmt.Sprintf("// UNKNOWN STATEMENT %v", statement), nil
 }
 
 var internalTypes = map[parser.TypeId]string{
@@ -61,9 +133,46 @@ func getTypeOfC(aType parser.ActualType) string {
 	return aType.CustomName
 }
 
-func compileVariableDeclaration(cl *compiler, statement parser.Statement) string {
-	varType := getTypeOfC(statement.ArgTypes[0])
+func compileVariableAssignment(cl *compiler, statement parser.Statement) (string, error) {
+	content := ""
+
+	assignCount := len(statement.Expressions)
+
+	for i := 0; i < assignCount; i++ {
+		name := statement.ArgNames[i]
+		expr := statement.Expressions[i]
+
+		fmt.Println(name, statement.RunScope)
+
+		compiledExpr, err := compile(cl, expr)
+
+		if err != nil {
+			return "", err
+		}
+
+		content += indent(cl) + name + " = " + compiledExpr + ";\n"
+	}
+
+	return content, nil
+}
+
+func compileVariableDeclaration(cl *compiler, statement parser.Statement) (string, error) {
+	varActualType := statement.ArgTypes[0]
+	varType := getTypeOfC(varActualType)
+
+	for _, at := range statement.ArgTypes {
+		if at.Id == parser.Bool {
+			importBoolean(cl)
+			break
+		}
+	}
+
 	varName := statement.ArgNames[0]
+
+	// Check if variable is already defined
+	if cl.currentScope.getVariable(varName) != nil {
+		return "", compileError(statement, "Variable is already defined")
+	}
 
 	value := statement.Value
 
@@ -73,21 +182,34 @@ func compileVariableDeclaration(cl *compiler, statement parser.Statement) string
 		constant = "const "
 	}
 
+	// Add variable to scope
+	cl.currentScope.vars = append(cl.currentScope.vars, scopeVar{
+		varName:     varName,
+		varType:     varActualType,
+		varConstant: statement.Constant,
+		varValue:    value,
+	})
+
 	if len(value) == 0 {
-		return indent(cl) + constant + varType + " " + varName + ";"
+		return indent(cl) + constant + varType + " " + varName + ";", nil
 	}
 
-	return indent(cl) + constant + varType + " " + varName + " = " + value + ";"
+	return indent(cl) + constant + varType + " " + varName + " = " + value + ";", nil
 }
 
-func compileExpression(cl *compiler, statement parser.Statement) string {
+func compileExpression(cl *compiler, statement parser.Statement) (string, error) {
 	if statement.Type == parser.NumberExpression || statement.Type == parser.IdentifierExpression {
-		return statement.Value
+		return statement.Value, nil
 	}
 
+	if statement.Type == parser.BinaryExpression {
+		return compileBinaryExpression(cl, statement, 0)
+	}
+
+	return indent(cl) + fmt.Sprintf("// UNKNOWN EXPRESSION %v", statement), nil
 }
 
-func genBinaryExpression(cl *compiler, statement parser.Statement, i int) string {
+func compileBinaryExpression(cl *compiler, statement parser.Statement, i int) (string, error) {
 	left := statement.Left
 	right := statement.Right
 	operator := statement.Operator
@@ -101,9 +223,21 @@ func genBinaryExpression(cl *compiler, statement parser.Statement, i int) string
 	}
 
 	if left.Type == parser.BinaryExpression {
-		content += genBinaryExpression(cl, *left, i+1)
+		compiled, err := compileBinaryExpression(cl, *left, i+1)
+
+		if err != nil {
+			return "", nil
+		}
+
+		content += compiled
 	} else {
-		content += compile(cl, *left)
+		compiled, err := compile(cl, *left)
+
+		if err != nil {
+			return "", nil
+		}
+
+		content += compiled
 	}
 
 	switch operator {
@@ -120,19 +254,31 @@ func genBinaryExpression(cl *compiler, statement parser.Statement, i int) string
 	}
 
 	if right.Type == parser.BinaryExpression {
-		content += genBinaryExpression(cl, *right, i+1)
+		compiled, err := compileBinaryExpression(cl, *right, i+1)
+
+		if err != nil {
+			return "", nil
+		}
+
+		content += compiled
 	} else {
-		content += compile(cl, *right)
+		compiled, err := compile(cl, *right)
+
+		if err != nil {
+			return "", nil
+		}
+
+		content += compiled
 	}
 
 	if i > 0 && !prioritized {
 		content += ")"
 	}
 
-	return content
+	return content, nil
 }
 
-func compileFunction(cl *compiler, statement parser.Statement) string {
+func compileFunction(cl *compiler, statement parser.Statement) (string, error) {
 	importBooleanIfNeeded(cl, statement)
 
 	content := ""
@@ -193,17 +339,29 @@ func compileFunction(cl *compiler, statement parser.Statement) string {
 		cl.indent++
 		content += " {\n" + indent(cl) + "// NO RUN SCOPE\n}\n"
 		cl.indent--
-		return content
+		return content, nil
 	}
 
-	content += compileScope(cl, *scope)
+	compiled, err := compileScope(cl, *scope)
 
-	return content
+	if err != nil {
+		return "", err
+	}
+
+	content += compiled
+
+	return content, nil
 }
 
-func compileScope(cl *compiler, statement parser.Statement) string {
+func compileScope(cl *compiler, statement parser.Statement) (string, error) {
 	content := ""
 	indent := indent(cl)
+
+	// Set scope in compiler
+	parentScope := cl.currentScope
+	cl.currentScope = scope{
+		parent: &parentScope,
+	}
 
 	if statement.Type == parser.ScopeDeclaration {
 		content += indent + "{\n"
@@ -212,7 +370,12 @@ func compileScope(cl *compiler, statement parser.Statement) string {
 	cl.indent++
 
 	for _, child := range statement.Children {
-		code := compile(cl, child)
+		code, err := compile(cl, child)
+
+		if err != nil {
+			return "", err
+		}
+
 		if len(code) > 0 {
 			content += code + "\n"
 		}
@@ -220,11 +383,14 @@ func compileScope(cl *compiler, statement parser.Statement) string {
 
 	cl.indent--
 
+	// Revert scope back to parent, since we left it
+	cl.currentScope = parentScope
+
 	if statement.Type == parser.ScopeDeclaration {
 		content += indent + "}\n"
 	}
 
-	return content
+	return content, nil
 }
 
 func indent(cl *compiler) string {

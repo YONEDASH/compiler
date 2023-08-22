@@ -65,13 +65,20 @@ func ParseTokens(tokens []lexer.Token) (Statement, error) {
 			break
 		}
 
+		current := parser.current()
+
 		statement, err := parseStatement(&parser)
+		if err != nil {
+			return Statement{}, err
+		}
+
+		skip, err := processStatement(current, &statement)
 
 		if err != nil {
 			return Statement{}, err
 		}
 
-		if statement.Type < 0 {
+		if skip {
 			continue
 		}
 
@@ -88,6 +95,26 @@ func ParseTokens(tokens []lexer.Token) (Statement, error) {
 	return root, nil
 }
 
+func processStatement(start lexer.Token, statement *Statement) (bool, error) {
+	if statement.Type < 0 {
+		return true, nil
+	}
+
+	statement.Trace = *start.Trace
+
+	return false, nil
+}
+
+func demandNewLineOrSemicolon(parser *tokenParser, statement Statement) (Statement, error) {
+	current := parser.current()
+
+	if current.Type != lexer.LF && current.Type != lexer.Semicolon {
+		return Statement{}, parseError(current, "Expected new line or semicolon")
+	}
+
+	return statement, nil
+}
+
 func parseStatement(parser *tokenParser) (Statement, error) {
 	current := parser.current()
 	switch current.Type {
@@ -100,6 +127,11 @@ func parseStatement(parser *tokenParser) (Statement, error) {
 		return parseFunction(parser)
 	case lexer.Var, lexer.Const:
 		return parseVariableDeclaration(parser)
+	case lexer.Identifier, lexer.OpenParenthesis:
+		if current.Type == lexer.Identifier && parser.after().Type == lexer.OpenParenthesis {
+			return Statement{}, parseError(current, "FUNC CALL")
+		}
+		return parseVariableAssign(parser)
 	}
 
 	return Statement{}, parseError(current, "Unexpected token, statement expected")
@@ -251,6 +283,134 @@ func parsePrimaryExpression(parser *tokenParser) (Statement, error) {
 	return expression, parseError(token, "Unexpected token, expected expression")
 }
 
+func parseVariableAssign(parser *tokenParser) (Statement, error) {
+	current := parser.current()
+
+	varNames := []string{}
+
+	if current.Type == lexer.OpenParenthesis {
+		// Consume parenthesis
+		parser.consume()
+
+		for {
+			// Check for possible end
+			if current.Type == lexer.CloseParenthesis && len(varNames) > 0 {
+				return Statement{}, parseError(current, "Unexpected token, expected identifier")
+			}
+
+			// Get identifier
+			current = parser.current()
+
+			if current.Type != lexer.Identifier {
+				return Statement{}, parseError(current, "Unexpected token, expected identifier")
+			}
+
+			// Add identifier as var name
+			varNames = append(varNames, current.Value)
+
+			// Consume identifier
+			parser.consume()
+			current = parser.current()
+
+			// Check for possible end
+			if current.Type == lexer.CloseParenthesis {
+				parser.consume()
+				break
+			}
+
+			// Check for next var
+			if current.Type == lexer.Comma {
+				parser.consume()
+				continue
+			}
+
+			return Statement{}, parseError(current, "Unexpected token")
+		}
+	} else {
+
+		if current.Type != lexer.Identifier {
+			return Statement{}, parseError(current, "Expected identifier")
+		}
+
+		// Add identifier as var name
+		varNames = append(varNames, current.Value)
+
+		// Consume identifier
+		parser.consume()
+
+	}
+
+	current = parser.current()
+
+	// TODO add += -= etc here
+
+	if current.Type == lexer.Equals {
+
+		// Consume equals
+		parser.consume()
+		current = parser.current()
+
+		varExpressions := []Statement{}
+
+		if current.Type == lexer.OpenParenthesis {
+			if len(varNames) == 1 {
+				return Statement{}, parseError(current, "Cannot assign multiple expressions to a single variable")
+			}
+
+			// Consume parenthesis
+			parser.consume()
+
+			for {
+				// Get expression
+				expression, err := parseExpression(parser)
+
+				if err != nil {
+					return Statement{}, err
+				}
+
+				varExpressions = append(varExpressions, expression)
+
+				current = parser.current()
+
+				// Check for possible end
+				if current.Type == lexer.CloseParenthesis {
+					parser.consume()
+					break
+				}
+
+				// Check for next var
+				if current.Type == lexer.Comma {
+					parser.consume()
+					continue
+				}
+
+				return Statement{}, parseError(current, "Unexpected token")
+			}
+		} else {
+			if len(varNames) > 1 {
+				return Statement{}, parseError(current, "Cannot assign one expression to multiple variables")
+			}
+
+			// Get expression
+			expression, err := parseExpression(parser)
+
+			if err != nil {
+				return Statement{}, err
+			}
+
+			varExpressions = append(varExpressions, expression)
+		}
+
+		return demandNewLineOrSemicolon(parser, Statement{
+			Type:        VariableAssignment,
+			ArgNames:    varNames,
+			Expressions: varExpressions,
+		})
+	}
+
+	return Statement{}, parseError(current, "Unknown operation on variable")
+}
+
 func parseVariableDeclaration(parser *tokenParser) (Statement, error) {
 	current := parser.current()
 
@@ -332,13 +492,13 @@ func parseVariableDeclaration(parser *tokenParser) (Statement, error) {
 	argTypes := []ActualType{variableType}
 	expressions := []Statement{exp}
 
-	return Statement{
+	return demandNewLineOrSemicolon(parser, Statement{
 		Type:        VariableDeclaration,
 		Expressions: expressions,
 		ArgNames:    argNames,
 		ArgTypes:    argTypes,
 		Constant:    isConstant,
-	}, nil
+	})
 }
 
 func parseFunction(parser *tokenParser) (Statement, error) {
@@ -437,7 +597,9 @@ func parseFunction(parser *tokenParser) (Statement, error) {
 
 				if current.Type == lexer.CloseParenthesis {
 					parser.consume()
-					break
+
+					// Catch something like this: -> (int, ) OR ()
+					return Statement{}, parseError(current, "Unexpected token, expected type")
 				}
 
 				returnType, err := parseType(current)
@@ -572,6 +734,16 @@ func parseScope(parser *tokenParser) (Statement, error) {
 
 		if err != nil {
 			return Statement{}, err
+		}
+
+		skip, err := processStatement(current, &statement)
+
+		if err != nil {
+			return Statement{}, err
+		}
+
+		if skip {
+			continue
 		}
 
 		children = append(children, statement)

@@ -71,6 +71,7 @@ type Statement struct {
 	Expressions []Statement     // Variable Declaration & Assignment
 	Identifiers []Statement     // ^
 	Constant    bool            // Variable Declaration
+	ArraySizes  []int           // Identifier Expression of array
 	Trace       lexer.SourceTrace
 }
 

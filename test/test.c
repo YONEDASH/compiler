@@ -1,11 +1,17 @@
-#include <sys/types.h>
-#include <stdio.h>
+struct Comet_INTERNAL_boolean {
+    unsigned int value : 1;
+};
+int32_t test() {
+    int32_t t1 = 0;
 
-int main() {
-    int32_t d = 0;
-    uint64_t f = 0;
- float _Complex x = 0;
-    printf("%lu\n", (sizeof(x) * 8));
-    return 0;
+    struct Comet_INTERNAL_boolean t2 = { value: 1 };
+
+    // TODO FREE MEMORY
+    t1 = 1;
+    // TODO FREE MEMORY
+    t2.value = 2;
+
+    // TODO free(t1);
+    // TODO free(t2);
 }
 

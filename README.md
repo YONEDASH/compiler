@@ -5,6 +5,11 @@ work in progress!
 maybe compile/transpile .** files to C or Java.
 
 - first parse root (note function) THEN parse functions
+- parse arrays as identifiers: IdentifierExpression with ArraySizes set example: int[4][5] is ArraySizes: []int{ 4, 5}
+- memory freeing and allocation -> variables should only live in scope: destroy memory once scope is left
+- optimize memory allocation to free variables/memory as soon as possible in scope (for example once variable is used for the last time)
+- pass memory allocated state of variable to new variable, for example copies or returns
+- compile function should return more information on what it actually did
 
 add tests:
 - make sure int/double/float size are correct -> c code for sizeof(TYPE)

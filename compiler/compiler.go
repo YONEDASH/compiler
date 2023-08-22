@@ -52,10 +52,11 @@ type scope struct {
 }
 
 type scopeVar struct {
-	varType     parser.ActualType
-	varName     string
-	varConstant bool
-	varValue    string
+	varType      parser.ActualType
+	varName      string
+	varConstant  bool
+	varValue     string
+	varAllocated bool
 }
 
 type scopeFn struct {
@@ -193,6 +194,11 @@ func compileVariableAssignment(cl *compiler, statement parser.Statement) (string
 			return "", compileError(statement, fmt.Sprintf("Variable %s is immutable", name))
 		}
 
+		// Free memory from before
+		if variable.varAllocated {
+			content += indent(cl) + "// TODO FREE MEMORY\n"
+		}
+
 		compiledIdentifier, err := compileExpression(cl, identifier)
 
 		if err != nil {
@@ -241,6 +247,9 @@ func inferType(cl *compiler, expression parser.Statement, parent parser.Statemen
 		if value[0] != '-' {
 
 		}
+
+		// TODO get number type by MAX_SIZE
+		return parser.ActualType{Id: parser.Int32}, nil
 	case parser.BooleanExpression:
 		return parser.ActualType{Id: parser.Bool}, nil
 	case parser.IdentifierExpression:
@@ -255,6 +264,8 @@ func inferType(cl *compiler, expression parser.Statement, parent parser.Statemen
 }
 
 func compileVariableDeclaration(cl *compiler, statement parser.Statement) (string, error) {
+	cl.cImportLib("sys/types.h")
+
 	content := ""
 
 	assignCount := len(statement.Expressions)
@@ -276,6 +287,10 @@ func compileVariableDeclaration(cl *compiler, statement parser.Statement) (strin
 		if variable != nil {
 			return "", compileError(statement, fmt.Sprintf("Variable %s is already defined", name))
 		}
+
+		//
+		// !!! TODO Check if allocation needed, always true for testing right now
+		//
 
 		compiledIdentifier, err := compileExpression(cl, identifier)
 
@@ -313,10 +328,11 @@ func compileVariableDeclaration(cl *compiler, statement parser.Statement) (strin
 
 		// Add variable to scope
 		cl.currentScope.vars = append(cl.currentScope.vars, scopeVar{
-			varName:     name,
-			varType:     varType,
-			varConstant: statement.Constant,
-			varValue:    compiledExpr,
+			varName:      name,
+			varType:      varType,
+			varConstant:  statement.Constant,
+			varValue:     compiledExpr,
+			varAllocated: true,
 		})
 	}
 
@@ -496,7 +512,6 @@ func compileFunction(cl *compiler, statement parser.Statement) (string, error) {
 
 func compileScope(cl *compiler, statement parser.Statement) (string, error) {
 	content := ""
-	indent := indent(cl)
 
 	// Set scope in compiler
 	parentScope := cl.currentScope
@@ -505,7 +520,7 @@ func compileScope(cl *compiler, statement parser.Statement) (string, error) {
 	}
 
 	if statement.Type == parser.ScopeDeclaration {
-		content += indent + "{\n"
+		content += indent(cl) + "{\n"
 	}
 
 	cl.indent++
@@ -522,13 +537,20 @@ func compileScope(cl *compiler, statement parser.Statement) (string, error) {
 		}
 	}
 
+	// Free memory IF not exported, if so pass to exported variable
+	for _, variable := range cl.currentScope.vars {
+		if variable.varAllocated {
+			content += indent(cl) + "// TODO free(" + variable.varName + ");\n"
+		}
+	}
+
 	cl.indent--
 
 	// Revert scope back to parent, since we left it
 	cl.currentScope = parentScope
 
 	if statement.Type == parser.ScopeDeclaration {
-		content += indent + "}\n"
+		content += indent(cl) + "}\n"
 	}
 
 	return content, nil

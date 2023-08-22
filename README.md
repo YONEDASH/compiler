@@ -4,7 +4,12 @@ work in progress!
 
 maybe compile/transpile .** files to C or Java.
 
-- Scopes: once a scope is no longer used, memory will be freed
+- first parse root (note function) THEN parse functions
+
+add tests:
+- make sure int/double/float size are correct -> c code for sizeof(TYPE)
+
+Scopes: once a scope is no longer used, memory will be freed
 
 Set default values for functions
 ```

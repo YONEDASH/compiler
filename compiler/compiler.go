@@ -32,12 +32,23 @@ type compiler struct {
 	indent          int
 	booleanImported bool
 	currentScope    scope
+	imports         []string
+}
+
+func (c compiler) cImportLib(path string) {
+	for _, i := range c.imports {
+		if i == path {
+			return
+		}
+	}
+	c.imports = append(c.imports, path)
 }
 
 type scope struct {
 	parent *scope
 	vars   []scopeVar
 	fns    []scopeFn
+	types  []scopeType
 }
 
 type scopeVar struct {
@@ -50,6 +61,10 @@ type scopeVar struct {
 type scopeFn struct {
 	fnTypes []parser.ActualType
 	fnName  string
+}
+
+type scopeType struct {
+	typeName string
 }
 
 func (s scope) getVariable(name string) *scopeVar {
@@ -80,12 +95,32 @@ func (s scope) getFunction(name string) *scopeFn {
 	return nil
 }
 
+func (s scope) getType(name string) *scopeType {
+	for _, t := range s.types {
+		if t.typeName == name {
+			return &t
+		}
+	}
+
+	if s.parent != nil {
+		return s.parent.getType(name)
+	}
+
+	return nil
+}
+
 func CompileC(root parser.Statement) (string, error) {
 	cl := &compiler{indent: -1, currentScope: scope{}}
 	content, err := compile(cl, root)
 
 	if err != nil {
 		return "", err
+	}
+
+	imports := ""
+
+	for _, i := range cl.imports {
+		imports += i + "\n"
 	}
 
 	return cl.head + cl.prepend + content, nil
@@ -103,7 +138,7 @@ func compile(cl *compiler, statement parser.Statement) (string, error) {
 		return compileVariableDeclaration(cl, statement)
 	case parser.VariableAssignment:
 		return compileVariableAssignment(cl, statement)
-	case parser.BinaryExpression, parser.IdentifierExpression, parser.NumberExpression:
+	case parser.BinaryExpression, parser.IdentifierExpression, parser.NumberExpression, parser.BooleanExpression:
 		return compileExpression(cl, statement)
 	}
 
@@ -111,18 +146,21 @@ func compile(cl *compiler, statement parser.Statement) (string, error) {
 }
 
 var internalTypes = map[parser.TypeId]string{
+	// TODO: __UINT_FAST16_TYPE__ __INT16_TYPE__
 	parser.Void:          "void",
 	parser.Bool:          inferBoolean(),
-	parser.Int8:          "char",
-	parser.Int16:         "short",
-	parser.Int32:         "int",
-	parser.Int64:         "long",
-	parser.UnsignedInt8:  "unsigned char",
-	parser.UnsignedInt16: "unsigned short",
-	parser.UnsignedInt32: "unsigned int",
-	parser.UnsignedInt64: "unsigned long",
-	parser.Float:         "float",
-	parser.Double:        "double",
+	parser.Int8:          "int8_t",
+	parser.Int16:         "int16_t",
+	parser.Int32:         "int32_t",
+	parser.Int64:         "int64_t",
+	parser.UnsignedInt8:  "uint8_t",
+	parser.UnsignedInt16: "uint16_t",
+	parser.UnsignedInt32: "uint32_t",
+	parser.UnsignedInt64: "uint64_t",
+	parser.Float32:       "float",
+	parser.Float64:       "double",
+	parser.Complex64:     "float _Complex",
+	parser.Complex128:    "double _Complex",
 }
 
 func getTypeOfC(aType parser.ActualType) string {
@@ -134,15 +172,34 @@ func getTypeOfC(aType parser.ActualType) string {
 }
 
 func compileVariableAssignment(cl *compiler, statement parser.Statement) (string, error) {
+	cl.cImportLib("sys/types.h")
+
 	content := ""
 
 	assignCount := len(statement.Expressions)
 
 	for i := 0; i < assignCount; i++ {
-		name := statement.ArgNames[i]
-		expr := statement.Expressions[i]
+		identifier := statement.Identifiers[i]
+		name := identifier.Value
 
-		fmt.Println(name, statement.RunScope)
+		// Check if variable is defined
+		variable := cl.currentScope.getVariable(name)
+		if variable == nil {
+			return "", compileError(statement, fmt.Sprintf("Variable %s is not defined", name))
+		}
+
+		// Check if variable is constant
+		if variable.varConstant {
+			return "", compileError(statement, fmt.Sprintf("Variable %s is immutable", name))
+		}
+
+		compiledIdentifier, err := compileExpression(cl, identifier)
+
+		if err != nil {
+			return "", err
+		}
+
+		expr := statement.Expressions[i]
 
 		compiledExpr, err := compile(cl, expr)
 
@@ -150,60 +207,144 @@ func compileVariableAssignment(cl *compiler, statement parser.Statement) (string
 			return "", err
 		}
 
-		content += indent(cl) + name + " = " + compiledExpr + ";\n"
+		content += indent(cl) + compiledIdentifier + " = " + compiledExpr + ";\n"
 	}
 
 	return content, nil
 }
 
-func compileVariableDeclaration(cl *compiler, statement parser.Statement) (string, error) {
-	varActualType := statement.ArgTypes[0]
-	varType := getTypeOfC(varActualType)
+func inferTypes(cl *compiler, statement parser.Statement) ([]parser.ActualType, error) {
+	types := []parser.ActualType{}
+	expressions := statement.Expressions
+	len := len(statement.Expressions)
 
-	for _, at := range statement.ArgTypes {
-		if at.Id == parser.Bool {
-			importBoolean(cl)
-			break
+	for i := 0; i < len; i++ {
+		expression := expressions[i]
+		actualType, err := inferType(cl, expression, statement)
+
+		if err != nil {
+			return types, err
+		}
+
+		types = append(types, actualType)
+	}
+
+	return types, nil
+}
+
+func inferType(cl *compiler, expression parser.Statement, parent parser.Statement) (parser.ActualType, error) {
+	switch expression.Type {
+	case parser.NumberExpression:
+		value := expression.Value
+
+		// Check for unsigned ints
+		if value[0] != '-' {
+
+		}
+	case parser.BooleanExpression:
+		return parser.ActualType{Id: parser.Bool}, nil
+	case parser.IdentifierExpression:
+		value := expression.Value
+
+		if value == internalTypes[parser.Void] {
+			return parser.ActualType{Id: parser.Void}, nil
 		}
 	}
 
-	varName := statement.ArgNames[0]
+	return parser.ActualType{}, compileError(parent, fmt.Sprintf("Undefined type %s of id %d", expression.Value, expression.Type))
+}
 
-	// Check if variable is already defined
-	if cl.currentScope.getVariable(varName) != nil {
-		return "", compileError(statement, "Variable is already defined")
+func compileVariableDeclaration(cl *compiler, statement parser.Statement) (string, error) {
+	content := ""
+
+	assignCount := len(statement.Expressions)
+
+	if len(statement.Types) == 0 {
+		types, err := inferTypes(cl, statement)
+		if err != nil {
+			return "", err
+		}
+		statement.Types = types
 	}
 
-	value := statement.Value
+	for i := 0; i < assignCount; i++ {
+		identifier := statement.Identifiers[i]
+		name := identifier.Value
 
-	constant := ""
+		// Check if variable is defined
+		variable := cl.currentScope.getVariable(name)
+		if variable != nil {
+			return "", compileError(statement, fmt.Sprintf("Variable %s is already defined", name))
+		}
 
-	if statement.Constant {
-		constant = "const "
+		compiledIdentifier, err := compileExpression(cl, identifier)
+
+		if err != nil {
+			return "", err
+		}
+
+		expr := statement.Expressions[i]
+
+		compiledExpr, err := compile(cl, expr)
+
+		if err != nil {
+			return "", err
+		}
+
+		constant := ""
+
+		if statement.Constant {
+			constant = "const "
+		}
+
+		varType := statement.Types[i]
+
+		content += indent(cl) + constant + getTypeOfC(varType) + " " + compiledIdentifier
+
+		if varType.Id == parser.Bool {
+			importBoolean(cl)
+
+			content += " = { value: " + compiledExpr + " }"
+		} else {
+			content += " = " + compiledExpr
+		}
+
+		content += ";\n"
+
+		// Add variable to scope
+		cl.currentScope.vars = append(cl.currentScope.vars, scopeVar{
+			varName:     name,
+			varType:     varType,
+			varConstant: statement.Constant,
+			varValue:    compiledExpr,
+		})
 	}
 
-	// Add variable to scope
-	cl.currentScope.vars = append(cl.currentScope.vars, scopeVar{
-		varName:     varName,
-		varType:     varActualType,
-		varConstant: statement.Constant,
-		varValue:    value,
-	})
-
-	if len(value) == 0 {
-		return indent(cl) + constant + varType + " " + varName + ";", nil
-	}
-
-	return indent(cl) + constant + varType + " " + varName + " = " + value + ";", nil
+	return content, nil
 }
 
 func compileExpression(cl *compiler, statement parser.Statement) (string, error) {
 	if statement.Type == parser.NumberExpression || statement.Type == parser.IdentifierExpression {
+		if statement.Type == parser.IdentifierExpression {
+			variable := cl.currentScope.getVariable(statement.Value)
+
+			if variable != nil && variable.varType.Id == parser.Bool {
+				return statement.Value + ".value", nil
+			}
+		}
+
 		return statement.Value, nil
 	}
 
 	if statement.Type == parser.BinaryExpression {
 		return compileBinaryExpression(cl, statement, 0)
+	}
+
+	if statement.Type == parser.BooleanExpression {
+		if statement.Value == "true" {
+			return "1", nil
+		}
+		return "0", nil
 	}
 
 	return indent(cl) + fmt.Sprintf("// UNKNOWN EXPRESSION %v", statement), nil

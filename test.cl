@@ -1,5 +1,5 @@
-fn test() -> (int) {
-    var f : bool = true
-    const f : int = 4
-    (boolTest.value, g) = (1, 2)
+fn test() -> int {
+    var t1 = 0
+    var t2 : int64 = 3
+    (t1, t2) = (1, 2)
 }

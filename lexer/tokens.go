@@ -15,6 +15,7 @@ const (
 	Null // There will be no null in this language?
 	Number
 	Identifier
+	Boolean
 	Equals // add plus equals etc..
 	Colon
 	Semicolon
@@ -44,6 +45,8 @@ var Keywords = map[string]TokenType{
 	"var":   Var,
 	"const": Const,
 	"fn":    Function,
+	"true":  Boolean,
+	"false": Boolean,
 }
 
 type Token struct {

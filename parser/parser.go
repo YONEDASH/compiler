@@ -146,7 +146,7 @@ func parseExpression(parser *tokenParser) (Statement, error) {
 
 func parseAdditiveExpression(parser *tokenParser) (Statement, error) {
 	left, err := parseMultiplicativeExpression(parser)
-	mutableLeft := left // Change this variable
+	mutableLeft := left // Reassign this variable
 	leftPtr := &left
 
 	if err != nil {
@@ -194,7 +194,7 @@ func parseAdditiveExpression(parser *tokenParser) (Statement, error) {
 
 func parseMultiplicativeExpression(parser *tokenParser) (Statement, error) {
 	left, err := parsePrimaryExpression(parser)
-	mutableLeft := left // Change this variable
+	mutableLeft := left // Reassign this variable
 	leftPtr := &left
 
 	if err != nil {
@@ -260,6 +260,12 @@ func parsePrimaryExpression(parser *tokenParser) (Statement, error) {
 			Type:  NumberExpression,
 			Value: token.Value,
 		}, nil
+	case lexer.Boolean:
+		parser.consume()
+		return Statement{
+			Type:  BooleanExpression,
+			Value: token.Value,
+		}, nil
 	case lexer.OpenParenthesis:
 		parser.consume() // Consume opening
 
@@ -286,7 +292,7 @@ func parsePrimaryExpression(parser *tokenParser) (Statement, error) {
 func parseVariableAssign(parser *tokenParser) (Statement, error) {
 	current := parser.current()
 
-	varNames := []string{}
+	varIdentifiers := []Statement{}
 
 	if current.Type == lexer.OpenParenthesis {
 		// Consume parenthesis
@@ -294,7 +300,7 @@ func parseVariableAssign(parser *tokenParser) (Statement, error) {
 
 		for {
 			// Check for possible end
-			if current.Type == lexer.CloseParenthesis && len(varNames) > 0 {
+			if current.Type == lexer.CloseParenthesis && len(varIdentifiers) > 0 {
 				return Statement{}, parseError(current, "Unexpected token, expected identifier")
 			}
 
@@ -305,11 +311,16 @@ func parseVariableAssign(parser *tokenParser) (Statement, error) {
 				return Statement{}, parseError(current, "Unexpected token, expected identifier")
 			}
 
-			// Add identifier as var name
-			varNames = append(varNames, current.Value)
+			// Parse (function also consumes it)
+			identifier, err := parsePrimaryExpression(parser)
 
-			// Consume identifier
-			parser.consume()
+			if err != nil {
+				return Statement{}, err
+			}
+
+			// Add identifier
+			varIdentifiers = append(varIdentifiers, identifier)
+
 			current = parser.current()
 
 			// Check for possible end
@@ -332,11 +343,15 @@ func parseVariableAssign(parser *tokenParser) (Statement, error) {
 			return Statement{}, parseError(current, "Expected identifier")
 		}
 
-		// Add identifier as var name
-		varNames = append(varNames, current.Value)
+		// Parse (function also consumes it)
+		identifier, err := parsePrimaryExpression(parser)
 
-		// Consume identifier
-		parser.consume()
+		if err != nil {
+			return Statement{}, err
+		}
+
+		// Add identifier
+		varIdentifiers = append(varIdentifiers, identifier)
 
 	}
 
@@ -353,10 +368,6 @@ func parseVariableAssign(parser *tokenParser) (Statement, error) {
 		varExpressions := []Statement{}
 
 		if current.Type == lexer.OpenParenthesis {
-			if len(varNames) == 1 {
-				return Statement{}, parseError(current, "Cannot assign multiple expressions to a single variable")
-			}
-
 			// Consume parenthesis
 			parser.consume()
 
@@ -386,8 +397,12 @@ func parseVariableAssign(parser *tokenParser) (Statement, error) {
 
 				return Statement{}, parseError(current, "Unexpected token")
 			}
+
+			if len(varIdentifiers) == 1 && len(varExpressions) > 1 {
+				return Statement{}, parseError(current, "Cannot assign multiple expressions to a single variable")
+			}
 		} else {
-			if len(varNames) > 1 {
+			if len(varIdentifiers) > 1 {
 				return Statement{}, parseError(current, "Cannot assign one expression to multiple variables")
 			}
 
@@ -401,9 +416,13 @@ func parseVariableAssign(parser *tokenParser) (Statement, error) {
 			varExpressions = append(varExpressions, expression)
 		}
 
+		if len(varIdentifiers) != len(varExpressions) {
+			return Statement{}, parseError(current, "Identifier and expression count mismatch")
+		}
+
 		return demandNewLineOrSemicolon(parser, Statement{
 			Type:        VariableAssignment,
-			ArgNames:    varNames,
+			Identifiers: varIdentifiers,
 			Expressions: varExpressions,
 		})
 	}
@@ -420,83 +439,236 @@ func parseVariableDeclaration(parser *tokenParser) (Statement, error) {
 	parser.consume()
 	current = parser.current()
 
-	// Get name
-	if current.Type != lexer.Identifier {
-		return Statement{}, parseError(current, "Expected identifier for variable declaration")
-	}
-	variableName := current.Value
+	varIdentifiers := []Statement{}
 
-	// Consume identifier
-	parser.consume()
+	if current.Type == lexer.OpenParenthesis {
+		// Consume parenthesis
+		parser.consume()
+
+		for {
+			// Check for possible end
+			if current.Type == lexer.CloseParenthesis && len(varIdentifiers) > 0 {
+				return Statement{}, parseError(current, "Unexpected token, expected identifier")
+			}
+
+			// Get identifier
+			current = parser.current()
+
+			if current.Type != lexer.Identifier {
+				return Statement{}, parseError(current, "Unexpected token, expected identifier")
+			}
+
+			// Parse (function also consumes it)
+			identifier, err := parsePrimaryExpression(parser)
+
+			if err != nil {
+				return Statement{}, err
+			}
+
+			// Add identifier
+			varIdentifiers = append(varIdentifiers, identifier)
+
+			current = parser.current()
+
+			// Check for possible end
+			if current.Type == lexer.CloseParenthesis {
+				parser.consume()
+				break
+			}
+
+			// Check for next var
+			if current.Type == lexer.Comma {
+				parser.consume()
+				continue
+			}
+
+			return Statement{}, parseError(current, "Unexpected token")
+		}
+	} else {
+
+		if current.Type != lexer.Identifier {
+			return Statement{}, parseError(current, "Expected identifier")
+		}
+
+		// Parse (function also consumes it)
+		identifier, err := parsePrimaryExpression(parser)
+
+		if err != nil {
+			return Statement{}, err
+		}
+
+		// Add identifier
+		varIdentifiers = append(varIdentifiers, identifier)
+
+	}
+
 	current = parser.current()
 
-	variableType := ActualType{
-		Id: Void,
-	}
-
 	// Check if type is already assigned
+	selfAssignedType := ActualType{}
+
+	varTypes := []ActualType{}
+
 	if current.Type == lexer.Colon {
 		// Consume colon
 		parser.consume()
 		current = parser.current()
 
-		// Get type
-		if current.Type != lexer.Identifier {
-			return Statement{}, parseError(current, "Expected type for implicit variable declaration")
+		if current.Type == lexer.OpenParenthesis {
+			// Consume parenthesis
+			parser.consume()
+
+			for {
+				current = parser.current()
+
+				// Get type
+				parsedType, err := parseType(current)
+
+				if err != nil {
+					return Statement{}, err
+				}
+
+				if err != nil {
+					return Statement{}, err
+				}
+
+				if parsedType.Id == Void {
+					return Statement{}, parseError(current, "Cannot declare variable as void")
+				}
+
+				varTypes = append(varTypes, parsedType)
+
+				// Consume type
+				parser.consume()
+
+				current = parser.current()
+
+				// Check for possible end
+				if current.Type == lexer.CloseParenthesis {
+					parser.consume()
+					break
+				}
+
+				// Check for next var
+				if current.Type == lexer.Comma {
+					parser.consume()
+					continue
+				}
+
+				return Statement{}, parseError(current, "Unexpected token, expecting ) or ,")
+			}
+
+			if len(varIdentifiers) == 1 && len(varTypes) > 1 {
+				return Statement{}, parseError(current, "Cannot assign multiple types to a single variable")
+			}
+		} else {
+			// Get type
+			if current.Type != lexer.Identifier {
+				return Statement{}, parseError(current, "Expected type for implicit variable declaration")
+			}
+
+			parsedType, err := parseType(current)
+
+			if err != nil {
+				return Statement{}, err
+			}
+
+			if parsedType.Id == Void {
+				return Statement{}, parseError(current, "Cannot declare variable as void")
+			}
+
+			varTypes = append(varTypes, parsedType)
+
+			// Consume type
+			parser.consume()
 		}
-
-		parsedType, err := parseType(current)
-
-		if err != nil {
-			return Statement{}, err
-		}
-
-		if parsedType.Id == Void {
-			return Statement{}, parseError(current, "Cannot assign void variable")
-		}
-
-		variableType = parsedType
-
-		// Consume type
-		parser.consume()
 	}
-
-	// Auto assign variable later
 
 	current = parser.current()
-
-	if isConstant && current.Type != lexer.Equals {
-		return Statement{}, parseError(current, "Constant variable need to be defined with a value")
-	}
-
-	exp := Statement{}
+	varExpressions := []Statement{}
 
 	if current.Type == lexer.Equals {
 		// Consume equals
 		parser.consume()
+		current = parser.current()
 
-		// Parse expression
-		expression, err := parseExpression(parser)
+		if current.Type == lexer.OpenParenthesis {
+			// Consume parenthesis
+			parser.consume()
 
-		if err != nil {
-			return Statement{}, err
+			for {
+				// Get expression
+				expression, err := parseExpression(parser)
+
+				if err != nil {
+					return Statement{}, err
+				}
+
+				varExpressions = append(varExpressions, expression)
+
+				current = parser.current()
+
+				// Check for possible end
+				if current.Type == lexer.CloseParenthesis {
+					parser.consume()
+					break
+				}
+
+				// Check for next var
+				if current.Type == lexer.Comma {
+					parser.consume()
+					continue
+				}
+
+				return Statement{}, parseError(current, "Unexpected token, expecting ) or ,")
+			}
+
+			if len(varIdentifiers) == 1 && len(varExpressions) > 1 {
+				return Statement{}, parseError(current, "Cannot assign multiple expressions to a single variable")
+			}
+		} else {
+			if len(varIdentifiers) > 1 {
+				return Statement{}, parseError(current, "Cannot assign one expression to multiple variables")
+			}
+
+			// Get expression
+			expression, err := parseExpression(parser)
+
+			if err != nil {
+				return Statement{}, err
+			}
+
+			varExpressions = append(varExpressions, expression)
 		}
-
-		exp = expression
-
-	} else if variableType.Id == Void {
-		return Statement{}, parseError(current, "Implicit declaration of type needed if no value present")
 	}
 
-	argNames := []string{variableName}
-	argTypes := []ActualType{variableType}
-	expressions := []Statement{exp}
+	// Update current
+	current = parser.current()
+
+	if selfAssignedType.Id == Void && len(varExpressions) == 0 {
+		return Statement{}, parseError(current, "Implicit declaration of type needed when not assigning a value")
+	}
+
+	if len(varIdentifiers) != len(varExpressions) && len(varExpressions) > 0 {
+		return Statement{}, parseError(current, "Identifier and expression count mismatch")
+	}
+
+	if len(varIdentifiers) != len(varTypes) && len(varTypes) > 1 {
+		return Statement{}, parseError(current, "Identifier and type count mismatch")
+	}
+
+	if len(varTypes) == 1 {
+		count := len(varExpressions) - 1
+		for i := 0; i < count; i++ {
+			varTypes = append(varTypes, varTypes[0])
+		}
+	}
 
 	return demandNewLineOrSemicolon(parser, Statement{
 		Type:        VariableDeclaration,
-		Expressions: expressions,
-		ArgNames:    argNames,
-		ArgTypes:    argTypes,
+		Identifiers: varIdentifiers,
+		Expressions: varExpressions,
+		Types:       varTypes,
 		Constant:    isConstant,
 	})
 }
@@ -680,13 +852,11 @@ func parseType(token lexer.Token) (ActualType, error) {
 	switch token.Value {
 	case "void":
 		return ActualType{Id: Void}, nil
-	case "int":
-		return ActualType{Id: Int32}, nil
 	case "int8":
 		return ActualType{Id: Int8}, nil
 	case "int16":
 		return ActualType{Id: Int16}, nil
-	case "int32":
+	case "int32", "int":
 		return ActualType{Id: Int32}, nil
 	case "int64":
 		return ActualType{Id: Int64}, nil
@@ -698,10 +868,14 @@ func parseType(token lexer.Token) (ActualType, error) {
 		return ActualType{Id: UnsignedInt32}, nil
 	case "uint64":
 		return ActualType{Id: UnsignedInt64}, nil
-	case "float":
-		return ActualType{Id: Float}, nil
-	case "double":
-		return ActualType{Id: Double}, nil
+	case "float32", "float":
+		return ActualType{Id: Float32}, nil
+	case "float64", "double":
+		return ActualType{Id: Float64}, nil
+	case "complex64":
+		return ActualType{Id: Complex64}, nil
+	case "complex128":
+		return ActualType{Id: Complex128}, nil
 	case "bool":
 		return ActualType{Id: Bool}, nil
 	default:

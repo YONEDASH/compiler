@@ -1,11 +1,11 @@
-struct Comet_INTERNAL_boolean {
-    unsigned int value : 1;
-};
-int test() {
-    struct Comet_INTERNAL_boolean f;
-    const int f;
-    boolTest.value = 1;
-    g = 2;
+#include <sys/types.h>
+#include <stdio.h>
 
+int main() {
+    int32_t d = 0;
+    uint64_t f = 0;
+ float _Complex x = 0;
+    printf("%lu\n", (sizeof(x) * 8));
+    return 0;
 }
 

@@ -13,6 +13,7 @@ const (
 	NullExpression
 	NumberExpression
 	IdentifierExpression
+	BooleanExpression
 	BinaryExpression
 	FunctionDeclaration
 	VariableDeclaration
@@ -40,6 +41,11 @@ type ActualType struct {
 const (
 	Void TypeId = iota
 	Custom
+	Bool
+	Float32
+	Float64
+	Complex64
+	Complex128
 	Int8
 	Int16
 	Int32
@@ -48,9 +54,6 @@ const (
 	UnsignedInt16
 	UnsignedInt32
 	UnsignedInt64
-	Float
-	Double
-	Bool
 )
 
 type Statement struct {
@@ -64,8 +67,9 @@ type Statement struct {
 	RunScope    *Statement      // Function Declaration
 	ArgTypes    []ActualType    // ^
 	ArgNames    []string        // ^ & Assignment
-	Types       []ActualType    // ^ & Variable Declaration
+	Types       []ActualType    // ^ & Variable Declaration (EMPTY if no vars declared)
 	Expressions []Statement     // Variable Declaration & Assignment
+	Identifiers []Statement     // ^
 	Constant    bool            // Variable Declaration
 	Trace       lexer.SourceTrace
 }

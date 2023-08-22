@@ -35,7 +35,7 @@ type compiler struct {
 	imports         []string
 }
 
-func (c compiler) cImportLib(path string) {
+func (c *compiler) cImportLib(path string) {
 	for _, i := range c.imports {
 		if i == path {
 			return
@@ -121,10 +121,10 @@ func CompileC(root parser.Statement) (string, error) {
 	imports := ""
 
 	for _, i := range cl.imports {
-		imports += i + "\n"
+		imports += "#include \"" + i + "\"\n"
 	}
 
-	return cl.head + cl.prepend + content, nil
+	return imports + cl.head + cl.prepend + content, nil
 }
 
 func compile(cl *compiler, statement parser.Statement) (string, error) {
@@ -206,6 +206,17 @@ func compileVariableAssignment(cl *compiler, statement parser.Statement) (string
 		}
 
 		expr := statement.Expressions[i]
+
+		inferredType, err := inferType(cl, expr, statement)
+
+		if err != nil {
+			return "", err
+		}
+
+		// ALSO DO THIS FOR DECLARATION INFERRING
+		if inferredType.Id != variable.varType.Id {
+			return "", compileError(statement, "Expression type does not match variable type")
+		}
 
 		compiledExpr, err := compile(cl, expr)
 

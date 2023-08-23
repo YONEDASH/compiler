@@ -22,7 +22,7 @@ func fail(statement *parser.Statement, message string) error {
 	trace := statement.Trace
 
 	row, col := trace.Row, trace.Column
-	msg := fmt.Sprintf("%s @ %d:%d >> %+v", message, row, col, statement)
+	msg := fmt.Sprintf("%s @ %d:%d >> %v", message, row, col, statement)
 
 	return StaticError{message: msg, trace: trace}
 }
@@ -295,10 +295,11 @@ func analyzeVariableDeclaration(analyzer *staticAnalyzer, statement *parser.Stat
 		}
 
 		if varType.Id > 0 && varType.Id != inferredType.Id {
-			return fail(statement, fmt.Sprintf("Value of variable %s does not match it's type", name))
+			return fail(statement, fmt.Sprintf("Variable type of %s does not match value", name))
 		}
 
 		if varType.Id == 0 {
+			varType = inferredType
 			statement.Types[i] = inferredType
 		}
 
@@ -320,6 +321,36 @@ func declareVariable(analyzer *staticAnalyzer, statement *parser.Statement) erro
 }
 
 func analyzeVariableAssignment(analyzer *staticAnalyzer, statement *parser.Statement) error {
+	assignCount := len(statement.Expressions)
+
+	for i := 0; i < assignCount; i++ {
+		identifier := statement.Identifiers[i]
+		name := identifier.Value
+
+		// Check if variable is defined
+		variable := analyzer.currentScope.getVariable(name)
+		if variable == nil {
+			return fail(statement, fmt.Sprintf("Variable %s is not defined", name))
+		}
+
+		// Check if variable is constant
+		if variable.varConstant {
+			return fail(statement, fmt.Sprintf("Variable %s is immutable", name))
+		}
+
+		expr := statement.Expressions[i]
+
+		inferredType, err := inferType(analyzer, expr, statement)
+
+		if err != nil {
+			return err
+		}
+
+		if inferredType.Id != variable.varType.Id {
+			return fail(statement, fmt.Sprintf("Value of variable %s has an mismatched type", name))
+		}
+	}
+
 	return nil
 }
 

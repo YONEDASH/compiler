@@ -38,6 +38,7 @@ type TypeId int
 type ActualType struct {
 	Id         TypeId
 	CustomName string
+	_ALLOCATED bool // true if to deallocate in c compiler!
 	// Parent *ActualType // for something like: typedef number int32
 }
 

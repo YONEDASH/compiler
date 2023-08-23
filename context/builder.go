@@ -298,6 +298,10 @@ func analyzeVariableDeclaration(analyzer *staticAnalyzer, statement *parser.Stat
 			return fail(statement, fmt.Sprintf("Value of variable %s does not match it's type", name))
 		}
 
+		if varType.Id == 0 {
+			statement.Types[i] = inferredType
+		}
+
 		// Add variable to scope
 		analyzer.currentScope.vars = append(analyzer.currentScope.vars, scopeVar{
 			varName:            name,

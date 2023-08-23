@@ -172,6 +172,10 @@ func getTypeOfC(aType parser.ActualType) string {
 	return aType.CustomName
 }
 
+func compileVariableFree(cl *compiler, statement parser.Statement) (string, error) {
+
+}
+
 func compileVariableAssignment(cl *compiler, statement parser.Statement) (string, error) {
 	cl.cImportLib("sys/types.h")
 
@@ -224,7 +228,11 @@ func compileVariableAssignment(cl *compiler, statement parser.Statement) (string
 			return "", err
 		}
 
-		content += indent(cl) + compiledIdentifier + " = " + compiledExpr + ";\n"
+		content += indent(cl) + compiledIdentifier + " = " + compiledExpr + ";"
+
+		if i != assignCount-1 {
+			content += "\n"
+		}
 	}
 
 	return content, nil
@@ -335,7 +343,11 @@ func compileVariableDeclaration(cl *compiler, statement parser.Statement) (strin
 			content += " = " + compiledExpr
 		}
 
-		content += ";\n"
+		content += ";"
+
+		if i != assignCount-1 {
+			content += "\n"
+		}
 
 		// Add variable to scope
 		cl.currentScope.vars = append(cl.currentScope.vars, scopeVar{

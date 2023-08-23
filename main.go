@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/yonedash/comet/analysis"
 	"github.com/yonedash/comet/compiler"
+	"github.com/yonedash/comet/context"
 	"github.com/yonedash/comet/lexer"
 	"github.com/yonedash/comet/parser"
 )
@@ -29,12 +29,21 @@ func main() {
 		return
 	}
 
+	fmt.Println("BEFORE POPULATION")
 	parser.PrintAST(statement, 0)
 
-	hints, err := analysis.AnalyseAST(statement)
+	hints, err := context.Grow(&statement)
+
+	fmt.Println("AFTER POPULATION")
+	parser.PrintAST(statement, 0)
+
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
 
 	for _, hint := range hints {
-		fmt.Println(hint.Message, hint.Trace)
+		fmt.Println(hint.Message, hint.Statement.Trace)
 	}
 
 	c, err := compiler.CompileC(statement)

@@ -3,7 +3,7 @@ package parser
 import (
 	"fmt"
 
-	"github.com/yonedash/comet/lexer"
+	"github.com/yonedash/comet/analysis"
 )
 
 type StatementType int
@@ -19,6 +19,8 @@ const (
 	VariableDeclaration
 	ScopeDeclaration
 	VariableAssignment
+	// for context builder
+	MemoryDeAllocation
 )
 
 type BinaryOperation int
@@ -36,29 +38,49 @@ type TypeId int
 type ActualType struct {
 	Id         TypeId
 	CustomName string
+	// Parent *ActualType // for something like: typedef number int32
 }
 
 const (
 	Void TypeId = iota
-	Custom
 	Bool
+	Custom
+	Int8 // Numbers ordered by byte count / max size
+	UnsignedInt8
+	Int16
+	UnsignedInt16
 	Float32
+	Int32
+	UnsignedInt32
 	Float64
 	Complex64
 	Complex128
-	Int8
-	Int16
-	Int32
 	Int64
-	UnsignedInt8
-	UnsignedInt16
-	UnsignedInt32
 	UnsignedInt64
 )
 
+func getCommonTypeId(t1 ActualType, t2 ActualType) TypeId {
+	id1, id2 := t1.Id, t2.Id
+
+	// Types match
+	if id1 == id2 {
+		return id1
+	}
+
+	smallest := min(id1, id2)
+	biggest := max(id1, id2)
+
+	// Custom, Bool cannot be combined
+	if smallest <= Custom {
+		return Void
+	}
+
+	return biggest
+}
+
 type Statement struct {
 	Type        StatementType
-	Children    []Statement     // Root
+	Children    []*Statement    // Root
 	Left        *Statement      // Binary Expression
 	Right       *Statement      // ^
 	Operator    BinaryOperation // ^
@@ -72,7 +94,7 @@ type Statement struct {
 	Identifiers []Statement     // ^
 	Constant    bool            // Variable Declaration
 	ArraySizes  []int           // Identifier Expression of array
-	Trace       lexer.SourceTrace
+	Trace       analysis.SourceTrace
 }
 
 type StatementScope struct {
@@ -157,12 +179,12 @@ func PrintAST(statement Statement, i int) {
 	if len(statement.Children) > 0 {
 		fmt.Println(prefix, "Children: ")
 		for _, child := range statement.Children {
-			if &child == &statement {
+			if child == &statement {
 				fmt.Println(prefix, "Itself??")
 				continue
 			}
 
-			PrintAST(child, i+1)
+			PrintAST(*child, i+1)
 		}
 	}
 }

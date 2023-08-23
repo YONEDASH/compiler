@@ -1,4 +1,4 @@
-package lexer
+package analysis
 
 type SourceTrace struct {
 	Index  int

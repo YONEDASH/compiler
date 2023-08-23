@@ -1,5 +1,7 @@
 package lexer
 
+import "github.com/yonedash/comet/analysis"
+
 type TokenType int
 
 var _tokenTypeIncrementor TokenType = 0
@@ -52,5 +54,5 @@ var Keywords = map[string]TokenType{
 type Token struct {
 	Type  TokenType
 	Value string
-	Trace *SourceTrace
+	Trace *analysis.SourceTrace
 }

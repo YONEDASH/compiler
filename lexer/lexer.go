@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"unicode"
+
+	"github.com/yonedash/comet/analysis"
 )
 
 type TokenizeError struct {
@@ -269,7 +271,7 @@ func Tokenize(path string) ([]Token, error) {
 
 	tokens = append(tokens, Token{
 		Type: EOF,
-		Trace: &SourceTrace{
+		Trace: &analysis.SourceTrace{
 			Index: reader.length - 1,
 		},
 	})
@@ -336,7 +338,7 @@ func appendType(tokenType TokenType, identifier *string, tokens *[]Token, index 
 	*tokens = append(*tokens, Token{
 		Type:  tokenType,
 		Value: value,
-		Trace: &SourceTrace{
+		Trace: &analysis.SourceTrace{
 			Index: index,
 		},
 	})
@@ -359,7 +361,7 @@ func safelyEndIdentifier(identifier *string, tokens *[]Token, index int) {
 	*tokens = append(*tokens, Token{
 		Type:  Identifier,
 		Value: identifierDeref,
-		Trace: &SourceTrace{
+		Trace: &analysis.SourceTrace{
 			Index: index - len(identifierDeref),
 		},
 	})
@@ -384,7 +386,7 @@ func number(reader *tokenReader, index int) Token {
 	token := Token{
 		Type:  Number,
 		Value: value,
-		Trace: &SourceTrace{
+		Trace: &analysis.SourceTrace{
 			Index: index,
 		},
 	}

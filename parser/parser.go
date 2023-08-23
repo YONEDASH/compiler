@@ -3,12 +3,13 @@ package parser
 import (
 	"fmt"
 
+	"github.com/yonedash/comet/analysis"
 	"github.com/yonedash/comet/lexer"
 )
 
 type ParseError struct {
 	message string
-	trace   *lexer.SourceTrace
+	trace   *analysis.SourceTrace
 }
 
 func (e ParseError) Error() string {
@@ -58,7 +59,7 @@ func ParseTokens(tokens []lexer.Token) (Statement, error) {
 		index:  0,
 	}
 
-	children := []Statement{}
+	children := []*Statement{}
 
 	for {
 		if parser.isDone() {
@@ -84,7 +85,7 @@ func ParseTokens(tokens []lexer.Token) (Statement, error) {
 
 		// fmt.Printf("%d %+v\n", parser.index, statement)
 
-		children = append(children, statement)
+		children = append(children, &statement)
 	}
 
 	root := Statement{
@@ -485,7 +486,6 @@ func parseVariableDeclaration(parser *tokenParser) (Statement, error) {
 			return Statement{}, parseError(current, "Unexpected token")
 		}
 	} else {
-
 		if current.Type != lexer.Identifier {
 			return Statement{}, parseError(current, "Expected identifier")
 		}
@@ -581,6 +581,11 @@ func parseVariableDeclaration(parser *tokenParser) (Statement, error) {
 
 			// Consume type
 			parser.consume()
+		}
+	} else {
+		len := len(varIdentifiers)
+		for i := 0; i < len; i++ {
+			varTypes = append(varTypes, ActualType{})
 		}
 	}
 
@@ -892,7 +897,7 @@ func parseScope(parser *tokenParser) (Statement, error) {
 
 	parser.consume()
 
-	children := []Statement{}
+	children := []*Statement{}
 	closed := false
 
 	for {
@@ -920,7 +925,7 @@ func parseScope(parser *tokenParser) (Statement, error) {
 			continue
 		}
 
-		children = append(children, statement)
+		children = append(children, &statement)
 	}
 
 	if !closed {

@@ -292,9 +292,23 @@ func compileVariableDeclaration(cl *compiler, statement parser.Statement) (strin
 
 	assignCount := len(statement.Expressions)
 
+	if len(statement.Types) == 0 {
+		types, err := inferTypes(cl, statement)
+		if err != nil {
+			return "", err
+		}
+		statement.Types = types
+	}
+
 	for i := 0; i < assignCount; i++ {
 		identifier := statement.Identifiers[i]
 		name := identifier.Value
+
+		// Check if variable is defined
+		variable := cl.currentScope.getVariable(name)
+		if variable != nil {
+			return "", compileError(statement, fmt.Sprintf("Variable %s is already defined", name))
+		}
 
 		//
 		// !!! TODO Check if (re-)allocation needed, always true for testing right now
@@ -307,7 +321,17 @@ func compileVariableDeclaration(cl *compiler, statement parser.Statement) (strin
 		}
 
 		expr := statement.Expressions[i]
+
 		varType := statement.Types[i]
+
+		inferredType, err := inferType(cl, expr, statement)
+		if err != nil {
+			return "", err
+		}
+		if varType.Id != inferredType.Id {
+			return "", compileError(statement, "Expression type does not match variable type")
+		}
+
 		compiledExpr, err := compile(cl, expr)
 
 		if err != nil {

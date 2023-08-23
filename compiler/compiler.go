@@ -177,29 +177,10 @@ func compileVariableAssignment(cl *compiler, statement parser.Statement) (string
 	cl.cImportLib("sys/types.h")
 
 	content := ""
-
 	assignCount := len(statement.Expressions)
 
 	for i := 0; i < assignCount; i++ {
 		identifier := statement.Identifiers[i]
-		name := identifier.Value
-
-		// Check if variable is defined
-		variable := cl.currentScope.getVariable(name)
-		if variable == nil {
-			return "", compileError(statement, fmt.Sprintf("Variable %s is not defined", name))
-		}
-
-		// Check if variable is constant
-		if variable.varConstant {
-			return "", compileError(statement, fmt.Sprintf("Variable %s is immutable", name))
-		}
-
-		// Free memory from before
-		if variable.varAllocated {
-			content += indent(cl) + "// TODO FREE MEMORY\n"
-		}
-
 		compiledIdentifier, err := compileExpression(cl, identifier)
 
 		if err != nil {
@@ -207,18 +188,6 @@ func compileVariableAssignment(cl *compiler, statement parser.Statement) (string
 		}
 
 		expr := statement.Expressions[i]
-
-		inferredType, err := inferType(cl, expr, statement)
-
-		if err != nil {
-			return "", err
-		}
-
-		// ALSO DO THIS FOR DECLARATION INFERRING
-		if inferredType.Id != variable.varType.Id {
-			return "", compileError(statement, "Expression type does not match variable type")
-		}
-
 		compiledExpr, err := compile(cl, expr)
 
 		if err != nil {

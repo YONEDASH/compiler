@@ -1,16 +1,14 @@
 #include "sys/types.h"
-struct Comet_INTERNAL_boolean {
-    unsigned int value : 1;
-};
+#include "stdlib.h"
 int32_t test() {
-    int32_t t1 = 10;
-    struct Comet_INTERNAL_boolean t2 = { value: 1 };
-    struct Comet_INTERNAL_boolean boolTest = { value: 0 };
-    t1 = 20;
-    t2.value = 0;
-    boolTest.value = 1;
-    // TODO free(t1);
-    // TODO free(t2);
-    // TODO free(boolTest);
+    float speed = 50.0;
+    free(speed);
+    float time = 60.0;
+    const float s = speed;
+    free(s);
+    time = 5.0;
+    free(time);
+    const float v = s;
+    free(v);
 }
 

@@ -38,7 +38,6 @@ type TypeId int
 type ActualType struct {
 	Id         TypeId
 	CustomName string
-	_ALLOCATED bool // true if to deallocate in c compiler!
 	// Parent *ActualType // for something like: typedef number int32
 }
 
@@ -79,6 +78,72 @@ func getCommonTypeId(t1 ActualType, t2 ActualType) TypeId {
 	return biggest
 }
 
+type Scope struct {
+	Parent *Scope
+	Vars   []ScopeVar
+	Fns    []ScopeFn
+	Types  []ScopeType
+}
+
+type ScopeVar struct {
+	VarType            ActualType
+	VarName            string
+	VarConstant        bool
+	VarValueExpression Statement
+	ALLOCATED          bool // true if to deallocate in c compiler!
+}
+
+type ScopeFn struct {
+	FnTypes []ActualType
+	FnName  string
+}
+
+type ScopeType struct {
+	TypeName string
+}
+
+func (s Scope) GetVariable(name string) *ScopeVar {
+	for _, variable := range s.Vars {
+		if variable.VarName == name {
+			return &variable
+		}
+	}
+
+	if s.Parent != nil {
+		return s.Parent.GetVariable(name)
+	}
+
+	return nil
+}
+
+func (s Scope) GetFunction(name string) *ScopeFn {
+	for _, function := range s.Fns {
+		if function.FnName == name {
+			return &function
+		}
+	}
+
+	if s.Parent != nil {
+		return s.Parent.GetFunction(name)
+	}
+
+	return nil
+}
+
+func (s Scope) GetType(name string) *ScopeType {
+	for _, t := range s.Types {
+		if t.TypeName == name {
+			return &t
+		}
+	}
+
+	if s.Parent != nil {
+		return s.Parent.GetType(name)
+	}
+
+	return nil
+}
+
 type Statement struct {
 	Type        StatementType
 	Children    []*Statement    // Root
@@ -96,6 +161,12 @@ type Statement struct {
 	Constant    bool            // Variable Declaration
 	ArraySizes  []int           // Identifier Expression of array
 	Trace       analysis.SourceTrace
+
+	// Context
+	Context         Scope
+	ContextVariable *ScopeVar
+	ContextFunction *ScopeFn
+	ContextType     *ScopeType
 }
 
 type StatementScope struct {
@@ -153,6 +224,16 @@ func PrintAST(statement Statement, i int) {
 		fmt.Println(prefix, "(Return)Types:", statement.Types)
 		fmt.Println(prefix, "RunScope:")
 		PrintAST(*statement.RunScope, i+1)
+	}
+
+	if statement.Type == VariableDeclaration {
+		fmt.Println(prefix, "Types:", statement.Types)
+		fmt.Println(prefix, "Identifiers:", statement.Identifiers)
+		fmt.Println(prefix, "Expressions:", statement.Expressions)
+	}
+
+	if statement.Type == MemoryDeAllocation {
+		fmt.Println(prefix, "Var:", statement.ContextVariable)
 	}
 
 	if statement.Type == BinaryExpression {

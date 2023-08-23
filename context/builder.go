@@ -27,87 +27,12 @@ func fail(statement *parser.Statement, message string) error {
 	return StaticError{message: msg, trace: trace}
 }
 
-type scope struct {
-	parent *scope
-	vars   []scopeVar
-	fns    []scopeFn
-	types  []scopeType
-}
-
-type scopeVar struct {
-	varType            parser.ActualType
-	varName            string
-	varConstant        bool
-	varValueExpression parser.Statement
-	varAllocated       bool
-}
-
-type scopeFn struct {
-	fnTypes []parser.ActualType
-	fnName  string
-}
-
-type scopeType struct {
-	typeName string
-}
-
-func (s scope) getVariable(name string) *scopeVar {
-	for _, variable := range s.vars {
-		if variable.varName == name {
-			return &variable
-		}
-	}
-
-	if s.parent != nil {
-		return s.parent.getVariable(name)
-	}
-
-	return nil
-}
-
-func (s scope) getFunction(name string) *scopeFn {
-	for _, function := range s.fns {
-		if function.fnName == name {
-			return &function
-		}
-	}
-
-	if s.parent != nil {
-		return s.parent.getFunction(name)
-	}
-
-	return nil
-}
-
-func (s scope) getType(name string) *scopeType {
-	for _, t := range s.types {
-		if t.typeName == name {
-			return &t
-		}
-	}
-
-	if s.parent != nil {
-		return s.parent.getType(name)
-	}
-
-	return nil
-}
-
 type staticAnalyzer struct {
 	statements   []*parser.Statement
-	currentScope scope
+	currentScope parser.Scope
 	hints        []Hint
 	length       int
 	index        int
-}
-
-func (r *staticAnalyzer) insert(statement *parser.Statement) {
-	if r.isDone() {
-		return
-	}
-
-	r.statements = append(r.statements[:r.index+1], r.statements[r.index:]...)
-	r.statements[r.index] = statement
 }
 
 func (r staticAnalyzer) at(i int) *parser.Statement {
@@ -161,11 +86,11 @@ func (i insertOrder) insert(parent *parser.Statement) {
 }
 
 func Grow(statement *parser.Statement) ([]Hint, error) {
-	analyzer, err := analyzeInstance(statement, scope{})
+	analyzer, err := analyzeInstance(statement, parser.Scope{})
 	return analyzer.hints, err
 }
 
-func analyzeInstance(root *parser.Statement, scope scope) (staticAnalyzer, error) {
+func analyzeInstance(root *parser.Statement, scope parser.Scope) (staticAnalyzer, error) {
 	children := root.Children
 
 	analyzer := staticAnalyzer{
@@ -174,10 +99,10 @@ func analyzeInstance(root *parser.Statement, scope scope) (staticAnalyzer, error
 		length:       len(children),
 	}
 
-	return analyzer, analyzeTree(&analyzer)
+	return analyzer, analyzeTree(&analyzer, root)
 }
 
-func analyzeTree(analyzer *staticAnalyzer) error {
+func analyzeTree(analyzer *staticAnalyzer, parent *parser.Statement) error {
 	for {
 		if analyzer.isDone() {
 			break
@@ -190,6 +115,46 @@ func analyzeTree(analyzer *staticAnalyzer) error {
 			return err
 		}
 	}
+
+	err := generateMemoryDeAllocations(analyzer, parent)
+
+	return err
+}
+
+func generateMemoryDeAllocations(analyzer *staticAnalyzer, parent *parser.Statement) error {
+	scope := analyzer.currentScope
+
+	offset := 0
+
+	newChildren := parent.Children
+
+	for _, variable := range scope.Vars {
+		index := lastVariableUsageIndex(analyzer, variable)
+
+		if index >= 0 {
+			index++
+		}
+
+		fmt.Println(variable.VarName, "was last used at", index-offset, "mov to", index)
+
+		currentVar := variable
+
+		stmt := &parser.Statement{
+			Type:            parser.MemoryDeAllocation,
+			Context:         analyzer.currentScope,
+			ContextVariable: &currentVar,
+		}
+
+		if index >= len(newChildren) || index < 0 {
+			newChildren = append(newChildren, stmt)
+		} else {
+			newChildren = append(newChildren[:index+1], newChildren[index:]...)
+			newChildren[index] = stmt
+			offset++
+		}
+	}
+
+	parent.Children = newChildren
 
 	return nil
 }
@@ -234,7 +199,7 @@ func analyzeRoot(analyzer *staticAnalyzer, statement *parser.Statement) error {
 
 func analyzeScopeDeclaration(analyzer *staticAnalyzer, statement *parser.Statement) error {
 	initialScope := analyzer.currentScope
-	newScope := scope{parent: &initialScope}
+	newScope := parser.Scope{Parent: &initialScope}
 	analyzer.currentScope = newScope
 
 	a, err := analyzeInstance(statement, analyzer.currentScope)
@@ -244,6 +209,9 @@ func analyzeScopeDeclaration(analyzer *staticAnalyzer, statement *parser.Stateme
 	analyzer.hints = append(analyzer.hints, a.hints...)
 
 	analyzer.currentScope = initialScope
+
+	// Set context
+	statement.Context = newScope
 
 	return nil
 }
@@ -257,14 +225,20 @@ func analyzeFunctionDeclaration(analyzer *staticAnalyzer, statement *parser.Stat
 
 	name := statement.Value
 
-	if analyzer.currentScope.getFunction(name) != nil {
+	if analyzer.currentScope.GetFunction(name) != nil {
 		return fail(statement, fmt.Sprintf("Function %s is already declared", name))
 	}
 
-	analyzer.currentScope.fns = append(analyzer.currentScope.fns, scopeFn{
-		fnTypes: statement.Types,
-		fnName:  name,
-	})
+	newFn := parser.ScopeFn{
+		FnTypes: statement.Types,
+		FnName:  name,
+	}
+
+	analyzer.currentScope.Fns = append(analyzer.currentScope.Fns, newFn)
+
+	// Set context
+	statement.Context = analyzer.currentScope
+	statement.ContextFunction = &newFn
 
 	return nil
 }
@@ -277,7 +251,7 @@ func analyzeVariableDeclaration(analyzer *staticAnalyzer, statement *parser.Stat
 		name := identifier.Value
 
 		// Check if variable is defined
-		variable := analyzer.currentScope.getVariable(name)
+		variable := analyzer.currentScope.GetVariable(name)
 		if variable != nil {
 			return fail(statement, fmt.Sprintf("Variable %s is already declared", name))
 		}
@@ -304,19 +278,21 @@ func analyzeVariableDeclaration(analyzer *staticAnalyzer, statement *parser.Stat
 		}
 
 		// Add variable to scope
-		analyzer.currentScope.vars = append(analyzer.currentScope.vars, scopeVar{
-			varName:            name,
-			varType:            varType,
-			varConstant:        statement.Constant,
-			varValueExpression: expr,
-			varAllocated:       true,
-		})
+		newVar := parser.ScopeVar{
+			VarName:            name,
+			VarType:            varType,
+			VarConstant:        statement.Constant,
+			VarValueExpression: expr,
+			// VarAllocated:       true, ! no ! compiler will decide, always expect to de-allocate
+		}
+
+		analyzer.currentScope.Vars = append(analyzer.currentScope.Vars, newVar)
+
+		// Set context
+		statement.Context = analyzer.currentScope
+		statement.ContextVariable = &newVar
 	}
 
-	return nil
-}
-
-func declareVariable(analyzer *staticAnalyzer, statement *parser.Statement) error {
 	return nil
 }
 
@@ -328,13 +304,13 @@ func analyzeVariableAssignment(analyzer *staticAnalyzer, statement *parser.State
 		name := identifier.Value
 
 		// Check if variable is defined
-		variable := analyzer.currentScope.getVariable(name)
+		variable := analyzer.currentScope.GetVariable(name)
 		if variable == nil {
 			return fail(statement, fmt.Sprintf("Variable %s is not defined", name))
 		}
 
 		// Check if variable is constant
-		if variable.varConstant {
+		if variable.VarConstant {
 			return fail(statement, fmt.Sprintf("Variable %s is immutable", name))
 		}
 
@@ -346,9 +322,12 @@ func analyzeVariableAssignment(analyzer *staticAnalyzer, statement *parser.State
 			return err
 		}
 
-		if inferredType.Id != variable.varType.Id {
+		if inferredType.Id != variable.VarType.Id {
 			return fail(statement, fmt.Sprintf("Value of variable %s has an mismatched type", name))
 		}
+
+		// Set context
+		statement.Context = analyzer.currentScope
 	}
 
 	return nil
@@ -356,7 +335,64 @@ func analyzeVariableAssignment(analyzer *staticAnalyzer, statement *parser.State
 
 func analyzeIdentifierExpression(analyzer *staticAnalyzer, statement *parser.Statement) error {
 	// check if last in scope, to free var
+
+	name := statement.Value
+	variable := analyzer.currentScope.GetVariable(name)
+
+	if variable == nil {
+		return fail(statement, fmt.Sprintf("Undefined identifier %s", name))
+	}
+
 	return nil
+}
+
+func lastVariableUsageIndex(analyzer *staticAnalyzer, variable parser.ScopeVar) int {
+	lastIndex := -1
+
+	for i := 0; i < analyzer.length; i++ {
+		statement := analyzer.at(i)
+
+		if statement.Type > 0 && i > lastIndex && isUsingVariable(*statement, variable) {
+			fmt.Println("using "+variable.VarName+" at", i)
+			lastIndex = i
+		}
+	}
+
+	fmt.Println(">>last used "+variable.VarName+" at", lastIndex)
+
+	return lastIndex
+}
+
+func isUsingVariable(statement parser.Statement, variable parser.ScopeVar) bool {
+	name := variable.VarName
+
+	switch statement.Type {
+
+	case parser.VariableDeclaration:
+		for _, identifier := range statement.Identifiers {
+			if isUsingVariable(identifier, variable) {
+				return true
+			}
+		}
+
+	case parser.VariableAssignment:
+		for _, identifier := range statement.Identifiers {
+			if isUsingVariable(identifier, variable) {
+				return true
+			}
+		}
+		for _, expr := range statement.Expressions {
+			if isUsingVariable(expr, variable) {
+				return true
+			}
+		}
+
+	case parser.IdentifierExpression:
+		return name == statement.Value
+
+	}
+
+	return false
 }
 
 func inferType(analyzer *staticAnalyzer, expression parser.Statement, statement *parser.Statement) (parser.ActualType, error) {
@@ -377,23 +413,54 @@ func inferType(analyzer *staticAnalyzer, expression parser.Statement, statement 
 
 		// TODO get number type by MAX_SIZE
 		return parser.ActualType{Id: parser.Int32}, nil
+
 	case parser.BooleanExpression:
 		return parser.ActualType{Id: parser.Bool}, nil
+
 	case parser.IdentifierExpression:
 		value := expression.Value
 
-		scopeVariable := analyzer.currentScope.getVariable(value)
+		scopeVariable := analyzer.currentScope.GetVariable(value)
 
 		if scopeVariable == nil {
 			return parser.ActualType{}, fail(statement, fmt.Sprintf("Undefined identifier %s", value))
 		}
 
-		return scopeVariable.varType, nil
+		return scopeVariable.VarType, nil
+
+	case parser.BinaryExpression:
+		//return inferTypes(analyzer, statement)
 	}
 
 	return parser.ActualType{}, fail(statement, "Undefined type")
 }
 
-func declareMemoryDeallocations() {
+func inferTypes(analyzer *staticAnalyzer, statement *parser.Statement) (parser.ActualType, error) {
+	if statement.Left == nil {
+		return parser.ActualType{}, fail(statement, fmt.Sprintf("Left side could not be dereferenced %v", statement))
+	}
 
+	leftType, err := inferType(analyzer, *statement.Left, statement)
+
+	if err != nil {
+		return parser.ActualType{}, err
+	}
+
+	if statement.Right == nil {
+		return parser.ActualType{}, fail(statement, fmt.Sprintf("Left side could not be dereferenced %v", statement))
+	}
+
+	rightType, err := inferType(analyzer, *statement.Right, statement)
+
+	if err != nil {
+		return parser.ActualType{}, err
+	}
+
+	if leftType.Id != rightType.Id {
+		return parser.ActualType{}, fail(statement, "Cannot combine types TODO ADD SUPPORT LATER")
+	}
+
+	combinedType := leftType
+
+	return combinedType, nil
 }

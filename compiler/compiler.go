@@ -2,7 +2,6 @@ package compiler
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/yonedash/comet/analysis"
 	"github.com/yonedash/comet/parser"
@@ -32,7 +31,6 @@ type compiler struct {
 	prepend         string
 	indent          int
 	booleanImported bool
-	currentScope    scope
 	imports         []string
 }
 
@@ -45,74 +43,8 @@ func (c *compiler) cImportLib(path string) {
 	c.imports = append(c.imports, path)
 }
 
-type scope struct {
-	parent *scope
-	vars   []scopeVar
-	fns    []scopeFn
-	types  []scopeType
-}
-
-type scopeVar struct {
-	varType      parser.ActualType
-	varName      string
-	varConstant  bool
-	varValue     string
-	varAllocated bool
-}
-
-type scopeFn struct {
-	fnTypes []parser.ActualType
-	fnName  string
-}
-
-type scopeType struct {
-	typeName string
-}
-
-func (s scope) getVariable(name string) *scopeVar {
-	for _, variable := range s.vars {
-		if variable.varName == name {
-			return &variable
-		}
-	}
-
-	if s.parent != nil {
-		return s.parent.getVariable(name)
-	}
-
-	return nil
-}
-
-func (s scope) getFunction(name string) *scopeFn {
-	for _, function := range s.fns {
-		if function.fnName == name {
-			return &function
-		}
-	}
-
-	if s.parent != nil {
-		return s.parent.getFunction(name)
-	}
-
-	return nil
-}
-
-func (s scope) getType(name string) *scopeType {
-	for _, t := range s.types {
-		if t.typeName == name {
-			return &t
-		}
-	}
-
-	if s.parent != nil {
-		return s.parent.getType(name)
-	}
-
-	return nil
-}
-
 func CompileC(root parser.Statement) (string, error) {
-	cl := &compiler{indent: -1, currentScope: scope{}}
+	cl := &compiler{indent: -1}
 	content, err := compile(cl, root)
 
 	if err != nil {
@@ -142,9 +74,23 @@ func compile(cl *compiler, statement parser.Statement) (string, error) {
 		return compileVariableAssignment(cl, statement)
 	case parser.BinaryExpression, parser.IdentifierExpression, parser.NumberExpression, parser.BooleanExpression:
 		return compileExpression(cl, statement)
+	case parser.MemoryDeAllocation:
+		return compileMemoryDeAllocation(cl, statement)
 	}
 
 	return indent(cl) + fmt.Sprintf("// UNKNOWN STATEMENT %v", statement), nil
+}
+
+func compileMemoryDeAllocation(cl *compiler, statement parser.Statement) (string, error) {
+	variable := statement.ContextVariable
+
+	if variable.ALLOCATED { // todo flip logic
+		return "", nil
+	}
+
+	cl.cImportLib("stdlib.h")
+
+	return indent(cl) + "free(" + variable.VarName + ");", nil
 }
 
 var internalTypes = map[parser.TypeId]string{
@@ -204,56 +150,6 @@ func compileVariableAssignment(cl *compiler, statement parser.Statement) (string
 	return content, nil
 }
 
-func inferTypes(cl *compiler, statement parser.Statement) ([]parser.ActualType, error) {
-	types := []parser.ActualType{}
-	expressions := statement.Expressions
-	len := len(statement.Expressions)
-
-	for i := 0; i < len; i++ {
-		expression := expressions[i]
-		actualType, err := inferType(cl, expression, statement)
-
-		if err != nil {
-			return types, err
-		}
-
-		types = append(types, actualType)
-	}
-
-	return types, nil
-}
-
-func inferType(cl *compiler, expression parser.Statement, parent parser.Statement) (parser.ActualType, error) {
-	switch expression.Type {
-	case parser.NumberExpression:
-		value := expression.Value
-
-		floating := strings.Contains(value, ".")
-
-		// Check for unsigned ints
-		if value[0] != '-' {
-
-		}
-
-		if floating {
-			return parser.ActualType{Id: parser.Float32}, nil
-		}
-
-		// TODO get number type by MAX_SIZE
-		return parser.ActualType{Id: parser.Int32}, nil
-	case parser.BooleanExpression:
-		return parser.ActualType{Id: parser.Bool}, nil
-	case parser.IdentifierExpression:
-		value := expression.Value
-
-		if value == internalTypes[parser.Void] {
-			return parser.ActualType{Id: parser.Void}, nil
-		}
-	}
-
-	return parser.ActualType{}, compileError(parent, fmt.Sprintf("Undefined type %s of id %d", expression.Value, expression.Type))
-}
-
 func compileVariableDeclaration(cl *compiler, statement parser.Statement) (string, error) {
 	cl.cImportLib("sys/types.h")
 
@@ -263,7 +159,6 @@ func compileVariableDeclaration(cl *compiler, statement parser.Statement) (strin
 
 	for i := 0; i < assignCount; i++ {
 		identifier := statement.Identifiers[i]
-		name := identifier.Value
 
 		//
 		// !!! TODO Check if (re-)allocation needed, always true for testing right now
@@ -304,15 +199,6 @@ func compileVariableDeclaration(cl *compiler, statement parser.Statement) (strin
 		if i != assignCount-1 {
 			content += "\n"
 		}
-
-		// Add variable to scope
-		cl.currentScope.vars = append(cl.currentScope.vars, scopeVar{
-			varName:      name,
-			varType:      varType,
-			varConstant:  statement.Constant,
-			varValue:     compiledExpr,
-			varAllocated: true,
-		})
 	}
 
 	return content, nil
@@ -321,9 +207,9 @@ func compileVariableDeclaration(cl *compiler, statement parser.Statement) (strin
 func compileExpression(cl *compiler, statement parser.Statement) (string, error) {
 	if statement.Type == parser.NumberExpression || statement.Type == parser.IdentifierExpression {
 		if statement.Type == parser.IdentifierExpression {
-			variable := cl.currentScope.getVariable(statement.Value)
+			variable := statement.ContextVariable
 
-			if variable != nil && variable.varType.Id == parser.Bool {
+			if variable != nil && variable.VarType.Id == parser.Bool {
 				return statement.Value + ".value", nil
 			}
 		}
@@ -492,12 +378,6 @@ func compileFunction(cl *compiler, statement parser.Statement) (string, error) {
 func compileScope(cl *compiler, statement parser.Statement) (string, error) {
 	content := ""
 
-	// Set scope in compiler
-	parentScope := cl.currentScope
-	cl.currentScope = scope{
-		parent: &parentScope,
-	}
-
 	if statement.Type == parser.ScopeDeclaration {
 		content += indent(cl) + "{\n"
 	}
@@ -516,17 +396,7 @@ func compileScope(cl *compiler, statement parser.Statement) (string, error) {
 		}
 	}
 
-	// Free memory IF not exported, if so pass to exported variable
-	for _, variable := range cl.currentScope.vars {
-		if variable.varAllocated {
-			content += indent(cl) + "// TODO free(" + variable.varName + ");\n"
-		}
-	}
-
 	cl.indent--
-
-	// Revert scope back to parent, since we left it
-	cl.currentScope = parentScope
 
 	if statement.Type == parser.ScopeDeclaration {
 		content += indent(cl) + "}\n"

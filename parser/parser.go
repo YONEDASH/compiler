@@ -119,7 +119,7 @@ func demandNewLineOrSemicolon(parser *tokenParser, statement Statement) (Stateme
 func parseStatement(parser *tokenParser) (Statement, error) {
 	current := parser.current()
 	switch current.Type {
-	case lexer.LF: // Ignore line feed
+	case lexer.LF, lexer.Semicolon: // Ignore line feed / semicolon
 		parser.consume()
 		return Statement{Type: -1}, nil
 	case lexer.OpenCurlyBracket:
@@ -135,7 +135,7 @@ func parseStatement(parser *tokenParser) (Statement, error) {
 		return parseVariableAssign(parser)
 	}
 
-	return Statement{}, parseError(current, "Unexpected token, statement expected")
+	return Statement{}, parseError(current, fmt.Sprintf("Unexpected token, statement expected (%d)", current.Type))
 }
 
 func parseExpression(parser *tokenParser) (Statement, error) {

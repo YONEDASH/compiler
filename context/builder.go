@@ -381,23 +381,24 @@ func generateAndCleanUp(analyzer *staticAnalyzer, parent *parser.Statement) erro
 			return fail(&firstUsage, fmt.Sprintf("Unused variable %s", variable.VarName))
 		}
 
-		if variable.ALLOCATED {
-			stmt := &parser.Statement{
-				Type:            parser.MemoryDeAllocation,
-				Context:         analyzer.currentScope,
-				ContextVariable: &cv,
-			}
+		// Always append freeing statement, compiler needs to decide whether to act on it or not!
 
-			index := lastUsageIndex + offset
-			offset++
-
-			if index == len(parent.Children) {
-				parent.Children = append(parent.Children, stmt)
-			} else {
-				parent.Children = append(parent.Children[:index+1], parent.Children[index:]...)
-				parent.Children[index] = stmt
-			}
+		stmt := &parser.Statement{
+			Type:            parser.MemoryDeAllocation,
+			Context:         analyzer.currentScope,
+			ContextVariable: &cv,
 		}
+
+		index := lastUsageIndex + offset
+		offset++
+
+		if index == len(parent.Children) {
+			parent.Children = append(parent.Children, stmt)
+		} else {
+			parent.Children = append(parent.Children[:index+1], parent.Children[index:]...)
+			parent.Children[index] = stmt
+		}
+
 	}
 
 	return nil

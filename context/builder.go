@@ -331,30 +331,44 @@ func isUsingVariable(statement parser.Statement, variable parser.ScopeVar) bool 
 
 	case parser.VariableDeclaration, parser.VariableAssignment:
 		for _, identifier := range statement.Identifiers {
+			fmt.Println("	>Identifier")
 			if isUsingVariable(*identifier, variable) {
+				fmt.Println("	<")
 				return true
 			}
+			fmt.Println("	<")
 		}
 		for _, expr := range statement.Expressions {
+			fmt.Println("	>Expression")
 			if isUsingVariable(*expr, variable) {
+				fmt.Println("	<")
 				return true
 			}
+			fmt.Println("	<")
+		}
+
+	case parser.BinaryExpression:
+		leftUsing := isUsingVariable(*statement.Left, variable)
+		rightUsing := isUsingVariable(*statement.Right, variable)
+
+		fmt.Println("	>binary", leftUsing, rightUsing)
+
+		if leftUsing {
+			return true
+		}
+
+		if rightUsing {
+			return true
 		}
 
 	case parser.IdentifierExpression:
 		using := variable.VarName == statement.Value
 
-		fmt.Println(variable.VarName+"="+statement.Value+" in identifier expression?", using)
-
-		return using
-
-	case parser.BinaryExpression:
-		using := isUsingVariable(*statement.Left, variable) || isUsingVariable(*statement.Right, variable)
-
-		fmt.Println(variable.VarName+" in binary expression?", using)
+		fmt.Println(variable.VarName+" ?= "+statement.Value+" in identifier expression?", using)
 
 		return using
 	}
+
 	return false
 }
 

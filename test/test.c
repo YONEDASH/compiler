@@ -1,14 +1,14 @@
-#include "sys/types.h"
 #include "stdlib.h"
+#include "sys/types.h"
+free(FACTOR);
+const int32_t FACTOR = 100;
 int32_t test() {
-    float speed = 50.0;
-    free(speed);
-    float time = 60.0;
-    const float s = speed;
-    free(s);
-    time = 5.0;
-    free(time);
-    const float v = s;
-    free(v);
+    int32_t HELLO = 1;
+    int32_t WORLD = 2;
+    int32_t STR = HELLO;
+    free(STR);
+    free(WORLD);
+    free(HELLO);
+    STR = HELLO+WORLD;
 }
 

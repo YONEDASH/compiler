@@ -121,44 +121,6 @@ func analyzeTree(analyzer *staticAnalyzer, parent *parser.Statement) error {
 	return err
 }
 
-func generateMemoryDeAllocations(analyzer *staticAnalyzer, parent *parser.Statement) error {
-	scope := analyzer.currentScope
-
-	offset := 0
-
-	newChildren := parent.Children
-
-	for _, variable := range scope.Vars {
-		index := lastVariableUsageIndex(analyzer, variable)
-
-		if index >= 0 {
-			index++
-		}
-
-		fmt.Println(variable.VarName, "was last used at", index-offset, "mov to", index)
-
-		currentVar := variable
-
-		stmt := &parser.Statement{
-			Type:            parser.MemoryDeAllocation,
-			Context:         analyzer.currentScope,
-			ContextVariable: &currentVar,
-		}
-
-		if index >= len(newChildren) || index < 0 {
-			newChildren = append(newChildren, stmt)
-		} else {
-			newChildren = append(newChildren[:index+1], newChildren[index:]...)
-			newChildren[index] = stmt
-			offset++
-		}
-	}
-
-	parent.Children = newChildren
-
-	return nil
-}
-
 func analyzeStatement(analyzer *staticAnalyzer, statement *parser.Statement) error {
 	// TODO check for unused vars, check for types, check for memory
 
@@ -224,6 +186,10 @@ func analyzeFunctionDeclaration(analyzer *staticAnalyzer, statement *parser.Stat
 	}
 
 	name := statement.Value
+
+	if analyzer.currentScope.Parent != nil {
+		return fail(statement, "Cannot declare function outside of root scope")
+	}
 
 	if analyzer.currentScope.GetFunction(name) != nil {
 		return fail(statement, fmt.Sprintf("Function %s is already declared", name))
@@ -328,6 +294,7 @@ func analyzeVariableAssignment(analyzer *staticAnalyzer, statement *parser.State
 
 		// Set context
 		statement.Context = analyzer.currentScope
+		statement.ContextVariable = variable
 	}
 
 	return nil
@@ -346,61 +313,95 @@ func analyzeIdentifierExpression(analyzer *staticAnalyzer, statement *parser.Sta
 	return nil
 }
 
-func lastVariableUsageIndex(analyzer *staticAnalyzer, variable parser.ScopeVar) int {
-	lastIndex := -1
+func lastVariableUsageIndex(children []*parser.Statement, variable parser.ScopeVar) int {
+	var lastIndex int = -1
+	for i := 0; i < len(children); i++ {
+		statement := children[i]
 
-	for i := 0; i < analyzer.length; i++ {
-		statement := analyzer.at(i)
-
-		if statement.Type > 0 && i > lastIndex && isUsingVariable(*statement, variable) {
-			fmt.Println("using "+variable.VarName+" at", i)
+		if i > lastIndex && isUsingVariable(*statement, variable) {
 			lastIndex = i
 		}
 	}
-
-	fmt.Println(">>last used "+variable.VarName+" at", lastIndex)
 
 	return lastIndex
 }
 
 func isUsingVariable(statement parser.Statement, variable parser.ScopeVar) bool {
-	name := variable.VarName
-
 	switch statement.Type {
 
-	case parser.VariableDeclaration:
+	case parser.VariableDeclaration, parser.VariableAssignment:
 		for _, identifier := range statement.Identifiers {
-			if isUsingVariable(identifier, variable) {
-				return true
-			}
-		}
-
-	case parser.VariableAssignment:
-		for _, identifier := range statement.Identifiers {
-			if isUsingVariable(identifier, variable) {
+			if isUsingVariable(*identifier, variable) {
 				return true
 			}
 		}
 		for _, expr := range statement.Expressions {
-			if isUsingVariable(expr, variable) {
+			if isUsingVariable(*expr, variable) {
 				return true
 			}
 		}
 
 	case parser.IdentifierExpression:
-		return name == statement.Value
+		using := variable.VarName == statement.Value
 
+		fmt.Println(variable.VarName+"="+statement.Value+" in identifier expression?", using)
+
+		return using
+
+	case parser.BinaryExpression:
+		using := isUsingVariable(*statement.Left, variable) || isUsingVariable(*statement.Right, variable)
+
+		fmt.Println(variable.VarName+" in binary expression?", using)
+
+		return using
 	}
-
 	return false
 }
 
-func inferType(analyzer *staticAnalyzer, expression parser.Statement, statement *parser.Statement) (parser.ActualType, error) {
+func generateMemoryDeAllocations(analyzer *staticAnalyzer, parent *parser.Statement) error {
+	scope := analyzer.currentScope
+
+	offset := 0
+
+	children := parent.Children
+
+	for _, variable := range scope.Vars {
+		index := lastVariableUsageIndex(children, variable)
+
+		if index < 0 {
+			fmt.Println(variable.VarName, "is not being used")
+			continue
+		}
+
+		fmt.Println(variable.VarName, "was last used at", index-offset, "mov to", index)
+
+		currentVar := variable
+
+		stmt := &parser.Statement{
+			Type:            parser.MemoryDeAllocation,
+			Context:         analyzer.currentScope,
+			ContextVariable: &currentVar,
+		}
+
+		if index >= len(parent.Children) {
+			parent.Children = append(parent.Children, stmt)
+		} else {
+			parent.Children = append(parent.Children[:index+1], parent.Children[index:]...)
+			parent.Children[index] = stmt
+			offset++
+		}
+	}
+
+	return nil
+}
+
+func inferType(analyzer *staticAnalyzer, expression *parser.Statement, statement *parser.Statement) (parser.ActualType, error) {
 	switch expression.Type {
 	case parser.NumberExpression:
 		value := expression.Value
 
 		floating := strings.Contains(value, ".")
+		// TODO get number type by MAX_SIZE
 
 		// Check for unsigned ints
 		if value[0] != '-' {
@@ -411,7 +412,6 @@ func inferType(analyzer *staticAnalyzer, expression parser.Statement, statement 
 			return parser.ActualType{Id: parser.Float32}, nil
 		}
 
-		// TODO get number type by MAX_SIZE
 		return parser.ActualType{Id: parser.Int32}, nil
 
 	case parser.BooleanExpression:
@@ -429,18 +429,18 @@ func inferType(analyzer *staticAnalyzer, expression parser.Statement, statement 
 		return scopeVariable.VarType, nil
 
 	case parser.BinaryExpression:
-		//return inferTypes(analyzer, statement)
+		return inferBinaryType(analyzer, expression)
 	}
 
 	return parser.ActualType{}, fail(statement, "Undefined type")
 }
 
-func inferTypes(analyzer *staticAnalyzer, statement *parser.Statement) (parser.ActualType, error) {
+func inferBinaryType(analyzer *staticAnalyzer, statement *parser.Statement) (parser.ActualType, error) {
 	if statement.Left == nil {
 		return parser.ActualType{}, fail(statement, fmt.Sprintf("Left side could not be dereferenced %v", statement))
 	}
 
-	leftType, err := inferType(analyzer, *statement.Left, statement)
+	leftType, err := inferType(analyzer, statement.Left, statement)
 
 	if err != nil {
 		return parser.ActualType{}, err
@@ -450,7 +450,7 @@ func inferTypes(analyzer *staticAnalyzer, statement *parser.Statement) (parser.A
 		return parser.ActualType{}, fail(statement, fmt.Sprintf("Left side could not be dereferenced %v", statement))
 	}
 
-	rightType, err := inferType(analyzer, *statement.Right, statement)
+	rightType, err := inferType(analyzer, statement.Right, statement)
 
 	if err != nil {
 		return parser.ActualType{}, err

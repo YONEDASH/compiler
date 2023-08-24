@@ -89,7 +89,7 @@ type ScopeVar struct {
 	VarType            ActualType
 	VarName            string
 	VarConstant        bool
-	VarValueExpression Statement
+	VarValueExpression *Statement
 	ALLOCATED          bool // true if to deallocate in c compiler!
 }
 
@@ -156,8 +156,8 @@ type Statement struct {
 	ArgTypes    []ActualType    // ^
 	ArgNames    []string        // ^ & Assignment
 	Types       []ActualType    // ^ & Variable Declaration (EMPTY if no vars declared)
-	Expressions []Statement     // Variable Declaration & Assignment
-	Identifiers []Statement     // ^
+	Expressions []*Statement    // Variable Declaration & Assignment
+	Identifiers []*Statement    // ^
 	Constant    bool            // Variable Declaration
 	ArraySizes  []int           // Identifier Expression of array
 	Trace       analysis.SourceTrace

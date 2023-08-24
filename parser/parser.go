@@ -179,10 +179,13 @@ func parseAdditiveExpression(parser *tokenParser) (Statement, error) {
 			return Statement{}, err
 		}
 
+		leftPtrCopy := leftPtr
+		rightPtrCopy := rightPtr
+
 		mutableLeft = Statement{
 			Type:     BinaryExpression,
-			Left:     leftPtr,
-			Right:    rightPtr,
+			Left:     leftPtrCopy,
+			Right:    rightPtrCopy,
 			Operator: operation,
 		}
 		left := mutableLeft
@@ -229,10 +232,13 @@ func parseMultiplicativeExpression(parser *tokenParser) (Statement, error) {
 			return Statement{}, err
 		}
 
+		leftPtrCopy := leftPtr
+		rightPtrCopy := rightPtr
+
 		mutableLeft = Statement{
 			Type:     BinaryExpression,
-			Left:     leftPtr,
-			Right:    rightPtr,
+			Left:     leftPtrCopy,
+			Right:    rightPtrCopy,
 			Operator: operation,
 		}
 		left := mutableLeft
@@ -293,7 +299,7 @@ func parsePrimaryExpression(parser *tokenParser) (Statement, error) {
 func parseVariableAssign(parser *tokenParser) (Statement, error) {
 	current := parser.current()
 
-	varIdentifiers := []Statement{}
+	varIdentifiers := []*Statement{}
 
 	if current.Type == lexer.OpenParenthesis {
 		// Consume parenthesis
@@ -320,7 +326,7 @@ func parseVariableAssign(parser *tokenParser) (Statement, error) {
 			}
 
 			// Add identifier
-			varIdentifiers = append(varIdentifiers, identifier)
+			varIdentifiers = append(varIdentifiers, &identifier)
 
 			current = parser.current()
 
@@ -352,7 +358,7 @@ func parseVariableAssign(parser *tokenParser) (Statement, error) {
 		}
 
 		// Add identifier
-		varIdentifiers = append(varIdentifiers, identifier)
+		varIdentifiers = append(varIdentifiers, &identifier)
 
 	}
 
@@ -366,7 +372,7 @@ func parseVariableAssign(parser *tokenParser) (Statement, error) {
 		parser.consume()
 		current = parser.current()
 
-		varExpressions := []Statement{}
+		varExpressions := []*Statement{}
 
 		if current.Type == lexer.OpenParenthesis {
 			// Consume parenthesis
@@ -380,7 +386,7 @@ func parseVariableAssign(parser *tokenParser) (Statement, error) {
 					return Statement{}, err
 				}
 
-				varExpressions = append(varExpressions, expression)
+				varExpressions = append(varExpressions, &expression)
 
 				current = parser.current()
 
@@ -414,7 +420,7 @@ func parseVariableAssign(parser *tokenParser) (Statement, error) {
 				return Statement{}, err
 			}
 
-			varExpressions = append(varExpressions, expression)
+			varExpressions = append(varExpressions, &expression)
 		}
 
 		if len(varIdentifiers) != len(varExpressions) {
@@ -440,7 +446,7 @@ func parseVariableDeclaration(parser *tokenParser) (Statement, error) {
 	parser.consume()
 	current = parser.current()
 
-	varIdentifiers := []Statement{}
+	varIdentifiers := []*Statement{}
 
 	if current.Type == lexer.OpenParenthesis {
 		// Consume parenthesis
@@ -467,7 +473,7 @@ func parseVariableDeclaration(parser *tokenParser) (Statement, error) {
 			}
 
 			// Add identifier
-			varIdentifiers = append(varIdentifiers, identifier)
+			varIdentifiers = append(varIdentifiers, &identifier)
 
 			current = parser.current()
 
@@ -498,7 +504,7 @@ func parseVariableDeclaration(parser *tokenParser) (Statement, error) {
 		}
 
 		// Add identifier
-		varIdentifiers = append(varIdentifiers, identifier)
+		varIdentifiers = append(varIdentifiers, &identifier)
 
 	}
 
@@ -590,7 +596,7 @@ func parseVariableDeclaration(parser *tokenParser) (Statement, error) {
 	}
 
 	current = parser.current()
-	varExpressions := []Statement{}
+	varExpressions := []*Statement{}
 
 	if current.Type == lexer.Equals {
 		// Consume equals
@@ -609,7 +615,7 @@ func parseVariableDeclaration(parser *tokenParser) (Statement, error) {
 					return Statement{}, err
 				}
 
-				varExpressions = append(varExpressions, expression)
+				varExpressions = append(varExpressions, &expression)
 
 				current = parser.current()
 
@@ -643,7 +649,7 @@ func parseVariableDeclaration(parser *tokenParser) (Statement, error) {
 				return Statement{}, err
 			}
 
-			varExpressions = append(varExpressions, expression)
+			varExpressions = append(varExpressions, &expression)
 		}
 	}
 

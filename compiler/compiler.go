@@ -45,7 +45,7 @@ func (c *compiler) cImportLib(path string) {
 
 func CompileC(root parser.Statement) (string, error) {
 	cl := &compiler{indent: -1}
-	content, err := compile(cl, root)
+	content, err := compile(cl, root, nil)
 
 	if err != nil {
 		return "", err
@@ -60,7 +60,7 @@ func CompileC(root parser.Statement) (string, error) {
 	return imports + cl.head + cl.prepend + content, nil
 }
 
-func compile(cl *compiler, statement parser.Statement) (string, error) {
+func compile(cl *compiler, statement parser.Statement, context *parser.Scope) (string, error) {
 	switch statement.Type {
 	case -1: // skip LF -> TODO: fix in parser to not be passed here
 		return "", nil
@@ -73,7 +73,7 @@ func compile(cl *compiler, statement parser.Statement) (string, error) {
 	case parser.VariableAssignment:
 		return compileVariableAssignment(cl, statement)
 	case parser.BinaryExpression, parser.IdentifierExpression, parser.NumberExpression, parser.BooleanExpression:
-		return compileExpression(cl, statement)
+		return compileExpression(cl, statement, context)
 	case parser.MemoryDeAllocation:
 		return compileMemoryDeAllocation(cl, statement)
 	}
@@ -127,14 +127,14 @@ func compileVariableAssignment(cl *compiler, statement parser.Statement) (string
 
 	for i := 0; i < assignCount; i++ {
 		identifier := statement.Identifiers[i]
-		compiledIdentifier, err := compileExpression(cl, identifier)
+		compiledIdentifier, err := compileExpression(cl, *identifier, &statement.Context)
 
 		if err != nil {
 			return "", err
 		}
 
 		expr := statement.Expressions[i]
-		compiledExpr, err := compile(cl, expr)
+		compiledExpr, err := compile(cl, *expr, &statement.Context)
 
 		if err != nil {
 			return "", err
@@ -164,7 +164,7 @@ func compileVariableDeclaration(cl *compiler, statement parser.Statement) (strin
 		// !!! TODO Check if (re-)allocation needed, always true for testing right now
 		//
 
-		compiledIdentifier, err := compileExpression(cl, identifier)
+		compiledIdentifier, err := compileExpression(cl, *identifier, &statement.Context)
 
 		if err != nil {
 			return "", err
@@ -172,7 +172,7 @@ func compileVariableDeclaration(cl *compiler, statement parser.Statement) (strin
 
 		expr := statement.Expressions[i]
 		varType := statement.Types[i]
-		compiledExpr, err := compile(cl, expr)
+		compiledExpr, err := compile(cl, *expr, &statement.Context)
 
 		if err != nil {
 			return "", err
@@ -182,6 +182,11 @@ func compileVariableDeclaration(cl *compiler, statement parser.Statement) (strin
 
 		if statement.Constant {
 			constant = "const "
+		}
+
+		// Don't use b.value
+		if varType.Id == parser.Bool {
+			compiledIdentifier = identifier.Value
 		}
 
 		content += indent(cl) + constant + getTypeOfC(varType) + " " + compiledIdentifier
@@ -204,10 +209,10 @@ func compileVariableDeclaration(cl *compiler, statement parser.Statement) (strin
 	return content, nil
 }
 
-func compileExpression(cl *compiler, statement parser.Statement) (string, error) {
+func compileExpression(cl *compiler, statement parser.Statement, context *parser.Scope) (string, error) {
 	if statement.Type == parser.NumberExpression || statement.Type == parser.IdentifierExpression {
 		if statement.Type == parser.IdentifierExpression {
-			variable := statement.ContextVariable
+			variable := context.GetVariable(statement.Value)
 
 			if variable != nil && variable.VarType.Id == parser.Bool {
 				return statement.Value + ".value", nil
@@ -218,7 +223,7 @@ func compileExpression(cl *compiler, statement parser.Statement) (string, error)
 	}
 
 	if statement.Type == parser.BinaryExpression {
-		return compileBinaryExpression(cl, statement, 0)
+		return compileBinaryExpression(cl, statement, 0, context)
 	}
 
 	if statement.Type == parser.BooleanExpression {
@@ -231,7 +236,7 @@ func compileExpression(cl *compiler, statement parser.Statement) (string, error)
 	return indent(cl) + fmt.Sprintf("// UNKNOWN EXPRESSION %v", statement), nil
 }
 
-func compileBinaryExpression(cl *compiler, statement parser.Statement, i int) (string, error) {
+func compileBinaryExpression(cl *compiler, statement parser.Statement, i int, context *parser.Scope) (string, error) {
 	left := statement.Left
 	right := statement.Right
 	operator := statement.Operator
@@ -245,7 +250,7 @@ func compileBinaryExpression(cl *compiler, statement parser.Statement, i int) (s
 	}
 
 	if left.Type == parser.BinaryExpression {
-		compiled, err := compileBinaryExpression(cl, *left, i+1)
+		compiled, err := compileBinaryExpression(cl, *left, i+1, context)
 
 		if err != nil {
 			return "", nil
@@ -253,7 +258,7 @@ func compileBinaryExpression(cl *compiler, statement parser.Statement, i int) (s
 
 		content += compiled
 	} else {
-		compiled, err := compile(cl, *left)
+		compiled, err := compile(cl, *left, context)
 
 		if err != nil {
 			return "", nil
@@ -276,7 +281,7 @@ func compileBinaryExpression(cl *compiler, statement parser.Statement, i int) (s
 	}
 
 	if right.Type == parser.BinaryExpression {
-		compiled, err := compileBinaryExpression(cl, *right, i+1)
+		compiled, err := compileBinaryExpression(cl, *right, i+1, context)
 
 		if err != nil {
 			return "", nil
@@ -284,7 +289,7 @@ func compileBinaryExpression(cl *compiler, statement parser.Statement, i int) (s
 
 		content += compiled
 	} else {
-		compiled, err := compile(cl, *right)
+		compiled, err := compile(cl, *right, context)
 
 		if err != nil {
 			return "", nil
@@ -385,7 +390,7 @@ func compileScope(cl *compiler, statement parser.Statement) (string, error) {
 	cl.indent++
 
 	for _, child := range statement.Children {
-		code, err := compile(cl, *child)
+		code, err := compile(cl, *child, &statement.Context)
 
 		if err != nil {
 			return "", err

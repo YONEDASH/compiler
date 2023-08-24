@@ -1,7 +1,8 @@
+const FACTOR = 100
+
 fn test() -> int {
-    var speed = 50.0
-    var time = 60.0
-    const s = speed
-    time = 5.0
-    const v = s
+   var HELLO = 1
+   var WORLD = 2
+   var STR = HELLO
+   STR = HELLO + WORLD
 }

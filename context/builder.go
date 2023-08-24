@@ -313,45 +313,32 @@ func analyzeIdentifierExpression(analyzer *staticAnalyzer, statement *parser.Sta
 	return nil
 }
 
-func lastVariableUsageIndex(children []*parser.Statement, variable parser.ScopeVar) int {
-	var lastIndex int = -1
-	for i := 0; i < len(children); i++ {
-		statement := children[i]
-
-		if i > lastIndex && isUsingVariable(*statement, variable) {
-			lastIndex = i
-		}
-	}
-
-	return lastIndex
-}
-
 func isUsingVariable(statement parser.Statement, variable parser.ScopeVar) bool {
 	switch statement.Type {
 
 	case parser.VariableDeclaration, parser.VariableAssignment:
 		for _, identifier := range statement.Identifiers {
-			fmt.Println("	>Identifier")
+			//fmt.Println("	>Identifier")
 			if isUsingVariable(*identifier, variable) {
-				fmt.Println("	<")
+				//fmt.Println("	<")
 				return true
 			}
-			fmt.Println("	<")
+			//fmt.Println("	<")
 		}
 		for _, expr := range statement.Expressions {
-			fmt.Println("	>Expression")
+			//fmt.Println("	>Expression")
 			if isUsingVariable(*expr, variable) {
-				fmt.Println("	<")
+				//fmt.Println("	<")
 				return true
 			}
-			fmt.Println("	<")
+			//fmt.Println("	<")
 		}
 
 	case parser.BinaryExpression:
 		leftUsing := isUsingVariable(*statement.Left, variable)
 		rightUsing := isUsingVariable(*statement.Right, variable)
 
-		fmt.Println("	>binary", leftUsing, rightUsing)
+		//fmt.Println("	>binary", leftUsing, rightUsing)
 
 		if leftUsing {
 			return true
@@ -364,7 +351,7 @@ func isUsingVariable(statement parser.Statement, variable parser.ScopeVar) bool 
 	case parser.IdentifierExpression:
 		using := variable.VarName == statement.Value
 
-		fmt.Println(variable.VarName+" ?= "+statement.Value+" in identifier expression?", using)
+		//fmt.Println(variable.VarName+" ?= "+statement.Value+" in identifier expression?", using)
 
 		return using
 	}
@@ -375,34 +362,39 @@ func isUsingVariable(statement parser.Statement, variable parser.ScopeVar) bool 
 func generateMemoryDeAllocations(analyzer *staticAnalyzer, parent *parser.Statement) error {
 	scope := analyzer.currentScope
 
-	offset := 0
+	offset := 1 // De-allocate after index
 
 	children := parent.Children
 
 	for _, variable := range scope.Vars {
-		index := lastVariableUsageIndex(children, variable)
+		cv := variable
 
-		if index < 0 {
-			fmt.Println(variable.VarName, "is not being used")
-			continue
+		fmt.Println(variable.VarName + " is being used by:")
+		lastUsageIndex := -1
+		for i := 0; i < len(children); i++ {
+			child := children[i]
+
+			if isUsingVariable(*child, variable) {
+				fmt.Println("- #", i)
+				lastUsageIndex = i
+			}
 		}
-
-		fmt.Println(variable.VarName, "was last used at", index-offset, "mov to", index)
-
-		currentVar := variable
+		fmt.Println(" >>", lastUsageIndex)
 
 		stmt := &parser.Statement{
 			Type:            parser.MemoryDeAllocation,
 			Context:         analyzer.currentScope,
-			ContextVariable: &currentVar,
+			ContextVariable: &cv,
 		}
 
-		if index >= len(parent.Children) {
+		index := lastUsageIndex + offset
+		offset++
+
+		if index == len(parent.Children) {
 			parent.Children = append(parent.Children, stmt)
 		} else {
 			parent.Children = append(parent.Children[:index+1], parent.Children[index:]...)
 			parent.Children[index] = stmt
-			offset++
 		}
 	}
 

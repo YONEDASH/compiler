@@ -116,7 +116,7 @@ func analyzeTree(analyzer *staticAnalyzer, parent *parser.Statement) error {
 		}
 	}
 
-	err := generateMemoryDeAllocations(analyzer, parent)
+	err := generateAndCleanUp(analyzer, parent)
 
 	return err
 }
@@ -318,27 +318,19 @@ func isUsingVariable(statement parser.Statement, variable parser.ScopeVar) bool 
 
 	case parser.VariableDeclaration, parser.VariableAssignment:
 		for _, identifier := range statement.Identifiers {
-			//fmt.Println("	>Identifier")
 			if isUsingVariable(*identifier, variable) {
-				//fmt.Println("	<")
 				return true
 			}
-			//fmt.Println("	<")
 		}
 		for _, expr := range statement.Expressions {
-			//fmt.Println("	>Expression")
 			if isUsingVariable(*expr, variable) {
-				//fmt.Println("	<")
 				return true
 			}
-			//fmt.Println("	<")
 		}
 
 	case parser.BinaryExpression:
 		leftUsing := isUsingVariable(*statement.Left, variable)
 		rightUsing := isUsingVariable(*statement.Right, variable)
-
-		//fmt.Println("	>binary", leftUsing, rightUsing)
 
 		if leftUsing {
 			return true
@@ -349,17 +341,13 @@ func isUsingVariable(statement parser.Statement, variable parser.ScopeVar) bool 
 		}
 
 	case parser.IdentifierExpression:
-		using := variable.VarName == statement.Value
-
-		//fmt.Println(variable.VarName+" ?= "+statement.Value+" in identifier expression?", using)
-
-		return using
+		return variable.VarName == statement.Value
 	}
 
 	return false
 }
 
-func generateMemoryDeAllocations(analyzer *staticAnalyzer, parent *parser.Statement) error {
+func generateAndCleanUp(analyzer *staticAnalyzer, parent *parser.Statement) error {
 	scope := analyzer.currentScope
 
 	offset := 1 // De-allocate after index
@@ -369,32 +357,46 @@ func generateMemoryDeAllocations(analyzer *staticAnalyzer, parent *parser.Statem
 	for _, variable := range scope.Vars {
 		cv := variable
 
-		fmt.Println(variable.VarName + " is being used by:")
 		lastUsageIndex := -1
+
+		usageCount := 0
+		firstUsage := parser.Statement{}
+
 		for i := 0; i < len(children); i++ {
 			child := children[i]
 
 			if isUsingVariable(*child, variable) {
-				fmt.Println("- #", i)
 				lastUsageIndex = i
+				usageCount++
+
+				if usageCount == 1 {
+					firstUsage = *child
+				}
 			}
 		}
-		fmt.Println(" >>", lastUsageIndex)
 
-		stmt := &parser.Statement{
-			Type:            parser.MemoryDeAllocation,
-			Context:         analyzer.currentScope,
-			ContextVariable: &cv,
+		fmt.Println(variable.VarName, usageCount)
+
+		if usageCount <= 1 {
+			return fail(&firstUsage, fmt.Sprintf("Unused variable %s", variable.VarName))
 		}
 
-		index := lastUsageIndex + offset
-		offset++
+		if variable.ALLOCATED {
+			stmt := &parser.Statement{
+				Type:            parser.MemoryDeAllocation,
+				Context:         analyzer.currentScope,
+				ContextVariable: &cv,
+			}
 
-		if index == len(parent.Children) {
-			parent.Children = append(parent.Children, stmt)
-		} else {
-			parent.Children = append(parent.Children[:index+1], parent.Children[index:]...)
-			parent.Children[index] = stmt
+			index := lastUsageIndex + offset
+			offset++
+
+			if index == len(parent.Children) {
+				parent.Children = append(parent.Children, stmt)
+			} else {
+				parent.Children = append(parent.Children[:index+1], parent.Children[index:]...)
+				parent.Children[index] = stmt
+			}
 		}
 	}
 

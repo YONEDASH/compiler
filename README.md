@@ -13,6 +13,7 @@ maybe compile/transpile .** files to C or Java.
 
 ## Later
 - Standard library
+- move C boolean to standard library
 - VariableDeclarations and VariableAssignments for only one decl/assign each -> expand (x, y) = (123, 456) to 2 single statements NOTE: will require parser rewrite
 - main fn should be a void. exit code with Exit(0)
 - first parse root (note function) THEN parse functions

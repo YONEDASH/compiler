@@ -4,13 +4,6 @@ import "github.com/yonedash/comet/analysis"
 
 type TokenType int
 
-var _tokenTypeIncrementor TokenType = 0
-
-func _tokenTypeGet() TokenType {
-	_tokenTypeIncrementor++
-	return _tokenTypeIncrementor - 1
-}
-
 const (
 	EOF TokenType = iota
 	LF

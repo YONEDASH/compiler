@@ -46,7 +46,7 @@ func main() {
 		fmt.Println(hint.Message, hint.Statement.Trace)
 	}
 
-	c, err := compiler.CompileC(statement)
+	c, err := compiler.CompileC(&statement)
 
 	if err != nil {
 		fmt.Println(err)

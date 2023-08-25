@@ -15,10 +15,13 @@ const (
 	IdentifierExpression
 	BooleanExpression
 	BinaryExpression
+	StringExpression
+	FunctionExpression
 	FunctionDeclaration
 	VariableDeclaration
 	ScopeDeclaration
 	VariableAssignment
+	ImportStatement
 	// for context builder
 	MemoryDeAllocation
 )
@@ -167,6 +170,9 @@ type Statement struct {
 	ContextVariable *ScopeVar
 	ContextFunction *ScopeFn
 	ContextType     *ScopeType
+
+	// Native Access
+	Native bool
 }
 
 type StatementScope struct {

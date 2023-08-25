@@ -5,6 +5,14 @@ work in progress!
 maybe compile/transpile .** files to C or Java.
 
 # Todos
+
+## Now
+- Function expressions / calls
+- String type
+- Arg... & Arrays
+
+## Later
+- Standard library
 - VariableDeclarations and VariableAssignments for only one decl/assign each -> expand (x, y) = (123, 456) to 2 single statements 
 - main fn should be a void. exit code with Exit(0)
 - first parse root (note function) THEN parse functions

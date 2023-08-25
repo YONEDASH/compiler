@@ -138,19 +138,28 @@ func Tokenize(path string) ([]Token, error) {
 			continue
 		}
 
+		fmt.Println(string(ch), ch, reader.index, "idf->", identifier, "<-", len(identifier))
+
+		// Check for string
+		if ch == '"' {
+			safelyEndIdentifier(&identifier, &tokens, reader.index)
+			tokens = append(tokens, str(&reader, reader.index))
+			continue
+		}
+
+		if ch == '-' && reader.after() == '>' {
+			appendType(ArrowRight, &identifier, &tokens, reader.index, string(reader.consume())+string(reader.consume()))
+			continue
+		}
+
 		// Only make token a number if there was no identifier started
-		if len(identifier) == 0 && (unicode.IsDigit(ch) || ch == '.') {
+		if len(identifier) == 0 && (unicode.IsDigit(ch) || ch == '.' || ch == '-') {
 			tokens = append(tokens, number(&reader, reader.index))
 			continue
 		}
 
 		if ch == '\n' {
 			appendType(LF, &identifier, &tokens, reader.index, string(reader.consume()))
-			continue
-		}
-
-		if ch == '-' && reader.after() == '>' {
-			appendType(ArrowRight, &identifier, &tokens, reader.index, string(reader.consume())+string(reader.consume()))
 			continue
 		}
 
@@ -368,13 +377,49 @@ func safelyEndIdentifier(identifier *string, tokens *[]Token, index int) {
 	*identifier = ""
 }
 
-func number(reader *tokenReader, index int) Token {
+func str(reader *tokenReader, index int) Token {
+	// Consume "
+	reader.consume()
+
 	value := ""
-	dots := 0
+
 	for {
 		ch := reader.current()
 
-		if dots == 0 && ch == '.' {
+		if reader.isDone() {
+			break
+		}
+
+		// \" \\"
+		if (ch == '"' && reader.before() != '\\') || (ch == '"' && reader.before() == '\\' && reader.at(reader.index-2) == '\\') {
+			reader.consume()
+			break
+		}
+
+		value += string(ch)
+		reader.consume()
+	}
+
+	token := Token{
+		Type:  String,
+		Value: value,
+		Trace: &analysis.SourceTrace{
+			Index: index,
+		},
+	}
+	return token
+}
+
+func number(reader *tokenReader, index int) Token {
+	value := ""
+	dots := 0
+	i := 0
+	for {
+		ch := reader.current()
+
+		if i == 0 && ch == '-' {
+			value += string(reader.consume())
+		} else if dots == 0 && ch == '.' {
 			value += string(reader.consume())
 			dots++
 		} else if unicode.IsDigit(ch) {
@@ -382,6 +427,7 @@ func number(reader *tokenReader, index int) Token {
 		} else {
 			break
 		}
+		i++
 	}
 	token := Token{
 		Type:  Number,

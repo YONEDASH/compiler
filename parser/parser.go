@@ -126,6 +126,8 @@ func parseStatement(parser *tokenParser) (Statement, error) {
 		return parseScope(parser)
 	case lexer.Function:
 		return parseFunction(parser)
+	case lexer.Import:
+		return parseImport(parser)
 	case lexer.Var, lexer.Const:
 		return parseVariableDeclaration(parser)
 	case lexer.Identifier, lexer.OpenParenthesis:
@@ -265,6 +267,12 @@ func parsePrimaryExpression(parser *tokenParser) (Statement, error) {
 		parser.consume()
 		return Statement{
 			Type:  NumberExpression,
+			Value: token.Value,
+		}, nil
+	case lexer.String:
+		parser.consume()
+		return Statement{
+			Type:  StringExpression,
 			Value: token.Value,
 		}, nil
 	case lexer.Boolean:
@@ -684,11 +692,113 @@ func parseVariableDeclaration(parser *tokenParser) (Statement, error) {
 	})
 }
 
+// Scans tokens for (X, X, X, ..., X) or X
+func getOrMultiGetExpr(parser *tokenParser) ([]Statement, error) {
+	result := []Statement{}
+
+	current := parser.current()
+
+	// Check for multiple return values
+	if current.Type == lexer.OpenParenthesis {
+		// Consume (
+		parser.consume()
+
+		for {
+			current = parser.current()
+
+			if current.Type == lexer.CloseParenthesis {
+				parser.consume()
+
+				// Catch something like this: -> (int, ) OR ()
+				return []Statement{}, parseError(current, "Unexpected token in ()")
+			}
+
+			parsed, err := parseExpression(parser)
+
+			if err != nil {
+				return []Statement{}, err
+			}
+
+			result = append(result, parsed)
+
+			current = parser.current()
+
+			// Check for )
+			if current.Type == lexer.CloseParenthesis {
+				parser.consume()
+				break
+			}
+
+			// Check for more arguments
+			if current.Type == lexer.Comma {
+				parser.consume()
+				continue
+			}
+
+			// Unexpected token
+			return []Statement{}, parseError(current, "Unexpected token in ()")
+		}
+
+	} else {
+		// Check for single return value
+		parsed, err := parseExpression(parser)
+
+		if err != nil {
+			return []Statement{}, err
+		}
+
+		result = append(result, parsed)
+	}
+
+	return result, nil
+}
+
+func parseImport(parser *tokenParser) (Statement, error) {
+	// Consume keyword
+	token := parser.consume()
+
+	// Check if function is native
+	isNative := false
+	if parser.current().Type == lexer.Native {
+		isNative = true
+		parser.consume()
+	}
+
+	// Values
+	values, err := getOrMultiGetExpr(parser)
+	if err != nil {
+		return Statement{}, err
+	}
+
+	strings := []string{}
+	for _, value := range values {
+		if value.Type != StringExpression {
+			return Statement{}, parseError(token, "Expecting strings")
+		}
+
+		strings = append(strings, value.Value)
+	}
+
+	return demandNewLineOrSemicolon(parser, Statement{
+		Type:     ImportStatement,
+		ArgNames: strings,
+		Native:   isNative,
+	})
+}
+
 func parseFunction(parser *tokenParser) (Statement, error) {
 	// Consume keyword
 	parser.consume()
 
 	current := parser.current()
+
+	// Check if function is native
+	isNative := false
+	if current.Type == lexer.Native {
+		isNative = true
+		parser.consume()
+		current = parser.current()
+	}
 
 	// Get identifier
 	if current.Type != lexer.Identifier {
@@ -835,14 +945,24 @@ func parseFunction(parser *tokenParser) (Statement, error) {
 
 	current = parser.current()
 
-	if current.Type != lexer.OpenCurlyBracket {
-		return Statement{}, parseError(current, "Expected new scope for function")
+	if isNative && current.Type == lexer.OpenCurlyBracket {
+		return Statement{}, parseError(current, "Native function cannot define a scope")
 	}
 
-	scope, err := parseScope(parser)
+	scope := Statement{}
 
-	if err != nil {
-		return Statement{}, err
+	if !isNative {
+		if current.Type != lexer.OpenCurlyBracket {
+			return Statement{}, parseError(current, "Expected new scope for function")
+		}
+
+		parsedScope, err := parseScope(parser)
+
+		if err != nil {
+			return Statement{}, err
+		}
+
+		scope = parsedScope
 	}
 
 	return Statement{
@@ -852,6 +972,7 @@ func parseFunction(parser *tokenParser) (Statement, error) {
 		ArgNames: argNames,
 		Types:    returnTypes,
 		RunScope: &scope,
+		Native:   isNative,
 	}, nil
 }
 

@@ -16,6 +16,7 @@ const (
 	LF
 	Null // There will be no null in this language?
 	Number
+	String
 	Identifier
 	Boolean
 	Equals // add plus equals etc..
@@ -40,15 +41,19 @@ const (
 	Var // Keywords
 	Const
 	Function
+	Import
+	Native
 )
 
 var Keywords = map[string]TokenType{
-	"null":  Null,
-	"var":   Var,
-	"const": Const,
-	"fn":    Function,
-	"true":  Boolean,
-	"false": Boolean,
+	"null":   Null,
+	"var":    Var,
+	"const":  Const,
+	"fn":     Function,
+	"true":   Boolean,
+	"false":  Boolean,
+	"import": Import,
+	"native": Native,
 }
 
 type Token struct {

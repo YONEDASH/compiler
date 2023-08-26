@@ -163,6 +163,7 @@ type Statement struct {
 	Identifiers []*Statement    // ^
 	Constant    bool            // Variable Declaration
 	ArraySizes  []int           // Identifier Expression of array
+	Variadic    bool            // Identifier Expression
 	Trace       analysis.SourceTrace
 
 	// Context

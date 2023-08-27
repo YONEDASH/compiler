@@ -7,9 +7,11 @@ maybe compile/transpile .** files to C or Java.
 # Todos
 
 ## Now
+- Refactor: NumberLiteral, StringLiteral...
 - Function expressions / calls
 - String type
 - Arg... & Arrays
+- Control: If, Else, For, While...
 
 ## Later
 - Standard library

@@ -12,6 +12,7 @@ maybe compile/transpile .** files to C or Java.
 - String type
 - Arg... & Arrays
 - Control: If, Else, For, While...
+- rename getOrMultiExprGet?!
 
 ## Later
 - Standard library

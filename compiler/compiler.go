@@ -74,7 +74,7 @@ func compile(cl *compiler, statement *parser.Statement, context *parser.Scope) (
 		return compileVariableDeclaration(cl, statement)
 	case parser.VariableAssignment:
 		return compileVariableAssignment(cl, statement)
-	case parser.BinaryExpression, parser.IdentifierExpression, parser.NumberExpression, parser.BooleanExpression:
+	case parser.BinaryExpression, parser.IdentifierExpression, parser.NumberLiteral, parser.BooleanLiteral:
 		return compileExpression(cl, statement, context)
 	case parser.MemoryDeAllocation:
 		return compileMemoryDeAllocation(cl, statement)
@@ -223,7 +223,7 @@ func compileVariableDeclaration(cl *compiler, statement *parser.Statement) (stri
 }
 
 func compileExpression(cl *compiler, statement *parser.Statement, context *parser.Scope) (string, error) {
-	if statement.Type == parser.NumberExpression || statement.Type == parser.IdentifierExpression {
+	if statement.Type == parser.NumberLiteral || statement.Type == parser.IdentifierExpression {
 		if statement.Type == parser.IdentifierExpression {
 			variable := context.GetVariable(statement.Value)
 
@@ -239,7 +239,7 @@ func compileExpression(cl *compiler, statement *parser.Statement, context *parse
 		return compileBinaryExpression(cl, statement, 0, context)
 	}
 
-	if statement.Type == parser.BooleanExpression {
+	if statement.Type == parser.BooleanLiteral {
 		if statement.Value == "true" {
 			return "1", nil
 		}

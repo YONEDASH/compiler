@@ -10,12 +10,12 @@ type StatementType int
 
 const (
 	Root StatementType = iota
-	NullExpression
-	NumberExpression
+	NullLiteral
+	NumberLiteral
+	StringLiteral
+	BooleanLiteral
 	IdentifierExpression
-	BooleanExpression
 	BinaryExpression
-	StringExpression
 	FunctionExpression
 	FunctionDeclaration
 	VariableDeclaration

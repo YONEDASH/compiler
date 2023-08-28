@@ -406,7 +406,7 @@ func generateAndCleanUp(analyzer *staticAnalyzer, parent *parser.Statement) erro
 
 func inferType(analyzer *staticAnalyzer, expression *parser.Statement, statement *parser.Statement) (parser.ActualType, error) {
 	switch expression.Type {
-	case parser.NumberExpression:
+	case parser.NumberLiteral:
 		value := expression.Value
 
 		floating := strings.Contains(value, ".")
@@ -423,7 +423,7 @@ func inferType(analyzer *staticAnalyzer, expression *parser.Statement, statement
 
 		return parser.ActualType{Id: parser.Int32}, nil
 
-	case parser.BooleanExpression:
+	case parser.BooleanLiteral:
 		return parser.ActualType{Id: parser.Bool}, nil
 
 	case parser.IdentifierExpression:

@@ -266,19 +266,19 @@ func parsePrimaryExpression(parser *tokenParser) (Statement, error) {
 	case lexer.Number:
 		parser.consume()
 		return Statement{
-			Type:  NumberExpression,
+			Type:  NumberLiteral,
 			Value: token.Value,
 		}, nil
 	case lexer.String:
 		parser.consume()
 		return Statement{
-			Type:  StringExpression,
+			Type:  StringLiteral,
 			Value: token.Value,
 		}, nil
 	case lexer.Boolean:
 		parser.consume()
 		return Statement{
-			Type:  BooleanExpression,
+			Type:  BooleanLiteral,
 			Value: token.Value,
 		}, nil
 	case lexer.OpenParenthesis:
@@ -772,7 +772,7 @@ func parseImport(parser *tokenParser) (Statement, error) {
 
 	strings := []string{}
 	for _, value := range values {
-		if value.Type != StringExpression {
+		if value.Type != StringLiteral {
 			return Statement{}, parseError(token, "Expecting strings")
 		}
 

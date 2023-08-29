@@ -144,6 +144,9 @@ func analyzeStatement(analyzer *staticAnalyzer, statement *parser.Statement) err
 	case parser.IdentifierExpression:
 		return analyzeIdentifierExpression(analyzer, statement)
 
+	case parser.FunctionExpression:
+		return analyzeFunctionExpression(analyzer, statement)
+
 	}
 
 	return nil
@@ -162,6 +165,30 @@ func analyzeRoot(analyzer *staticAnalyzer, statement *parser.Statement) error {
 func analyzeScopeDeclaration(analyzer *staticAnalyzer, statement *parser.Statement) error {
 	initialScope := analyzer.currentScope
 	newScope := parser.Scope{Parent: &initialScope}
+
+	caller := statement.RunCaller
+	if caller.Type == parser.FunctionDeclaration {
+		// Define variables of function in new scope
+		function := initialScope.GetFunction(caller.Value)
+
+		if function == nil {
+			return fail(statement, fmt.Sprintf("Could not get function %s within scope", caller.Value))
+		}
+
+		argCount := len(function.FnArgNames)
+		for i := 0; i < argCount; i++ {
+			argName := function.FnArgNames[i]
+			argType := function.FnArgTypes[i]
+
+			newScope.Vars = append(newScope.Vars, parser.ScopeVar{
+				VarType:       argType,
+				VarName:       argName,
+				VarConstant:   true,
+				VarOfFunction: true,
+			})
+		}
+	}
+
 	analyzer.currentScope = newScope
 
 	a, err := analyzeInstance(statement, analyzer.currentScope)
@@ -179,12 +206,6 @@ func analyzeScopeDeclaration(analyzer *staticAnalyzer, statement *parser.Stateme
 }
 
 func analyzeFunctionDeclaration(analyzer *staticAnalyzer, statement *parser.Statement) error {
-	err := analyzeStatement(analyzer, statement.RunScope)
-
-	if err != nil {
-		return err
-	}
-
 	name := statement.Value
 
 	if analyzer.currentScope.Parent != nil {
@@ -196,8 +217,10 @@ func analyzeFunctionDeclaration(analyzer *staticAnalyzer, statement *parser.Stat
 	}
 
 	newFn := parser.ScopeFn{
-		FnTypes: statement.Types,
-		FnName:  name,
+		FnTypes:    statement.Types,
+		FnArgNames: statement.ArgNames,
+		FnArgTypes: statement.ArgTypes,
+		FnName:     name,
 	}
 
 	analyzer.currentScope.Fns = append(analyzer.currentScope.Fns, newFn)
@@ -205,6 +228,14 @@ func analyzeFunctionDeclaration(analyzer *staticAnalyzer, statement *parser.Stat
 	// Set context
 	statement.Context = analyzer.currentScope
 	statement.ContextFunction = &newFn
+
+	runScope := statement.RunScope
+	runScope.RunCaller = statement
+	err := analyzeStatement(analyzer, runScope)
+
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -313,6 +344,47 @@ func analyzeIdentifierExpression(analyzer *staticAnalyzer, statement *parser.Sta
 	return nil
 }
 
+func analyzeFunctionExpression(analyzer *staticAnalyzer, statement *parser.Statement) error {
+	name := statement.Value
+	function := analyzer.currentScope.GetFunction(name)
+
+	if function == nil {
+		return fail(statement, fmt.Sprintf("Undefined function %s", name))
+	}
+
+	functionArgTypes := function.FnArgTypes
+	argTypeCount := len(functionArgTypes)
+	inputArgs := statement.Expressions
+	argInputCount := len(inputArgs)
+
+	if argInputCount != argTypeCount && (argTypeCount == 0 || !functionArgTypes[argTypeCount-1].Variadic) {
+		return fail(statement, "Invalid argument count")
+	}
+
+	for i := 0; i < argInputCount; i++ {
+		var expectedType parser.ActualType
+
+		if i >= argTypeCount {
+			expectedType = functionArgTypes[argTypeCount-1]
+		} else {
+			expectedType = functionArgTypes[i]
+		}
+
+		expression := inputArgs[i]
+		inferredType, err := inferType(analyzer, expression, statement)
+
+		if err != nil {
+			return err
+		}
+
+		if expectedType.Id != inferredType.Id {
+			return fail(statement, fmt.Sprintf("Invalid type in argument #%d in function call %s (%d != %d)", i, name, expectedType.Id, inferredType.Id))
+		}
+	}
+
+	return nil
+}
+
 func isUsingVariable(statement parser.Statement, variable parser.ScopeVar) bool {
 	switch statement.Type {
 
@@ -377,7 +449,7 @@ func generateAndCleanUp(analyzer *staticAnalyzer, parent *parser.Statement) erro
 
 		fmt.Println(variable.VarName, usageCount)
 
-		if usageCount <= 1 {
+		if usageCount <= 1 && !variable.VarOfFunction {
 			return fail(&firstUsage, fmt.Sprintf("Unused variable %s", variable.VarName))
 		}
 
@@ -426,6 +498,9 @@ func inferType(analyzer *staticAnalyzer, expression *parser.Statement, statement
 	case parser.BooleanLiteral:
 		return parser.ActualType{Id: parser.Bool}, nil
 
+	case parser.StringLiteral:
+		return parser.ActualType{Id: parser.String}, nil
+
 	case parser.IdentifierExpression:
 		value := expression.Value
 
@@ -439,6 +514,28 @@ func inferType(analyzer *staticAnalyzer, expression *parser.Statement, statement
 
 	case parser.BinaryExpression:
 		return inferBinaryType(analyzer, expression)
+
+	case parser.FunctionExpression:
+		value := expression.Value
+
+		function := analyzer.currentScope.GetFunction(value)
+
+		if function == nil {
+			return parser.ActualType{}, fail(statement, fmt.Sprintf("Undefined function %s", value))
+		}
+
+		types := function.FnTypes
+		typeCount := len(types)
+
+		if typeCount == 0 {
+			return parser.ActualType{}, fail(statement, fmt.Sprintf("Function %s does not return any value", value))
+		}
+
+		if typeCount > 1 {
+			return parser.ActualType{}, fail(statement, fmt.Sprintf("Function %s returns multiple values, can only accept one", value))
+		}
+
+		return types[0], nil
 	}
 
 	return parser.ActualType{}, fail(statement, "Undefined type")

@@ -39,14 +39,19 @@ const (
 type TypeId int
 
 type ActualType struct {
-	Id         TypeId
-	CustomName string
+	Id                       TypeId
+	CustomName               string
+	ArraySizes               []int
+	Variadic                 bool
+	SkipValidateVariadicType bool
 	// Parent *ActualType // for something like: typedef number int32
 }
 
 const (
 	Void TypeId = iota
 	Bool
+	String
+	Any
 	Custom
 	Int8 // Numbers ordered by byte count / max size
 	UnsignedInt8
@@ -93,12 +98,15 @@ type ScopeVar struct {
 	VarName            string
 	VarConstant        bool
 	VarValueExpression *Statement
+	VarOfFunction      bool
 	ALLOCATED          bool // true if to deallocate in c compiler!
 }
 
 type ScopeFn struct {
-	FnTypes []ActualType
-	FnName  string
+	FnTypes    []ActualType
+	FnArgNames []string
+	FnArgTypes []ActualType
+	FnName     string
 }
 
 type ScopeType struct {
@@ -156,14 +164,15 @@ type Statement struct {
 	Range       string          // Range of NumberExpression (int, float etc)
 	Value       string          // NumberExpression: num value | IdentifierExpression: name | BinaryExpression: operator
 	RunScope    *Statement      // Function Declaration
-	ArgTypes    []ActualType    // ^
-	ArgNames    []string        // ^ & Assignment
-	Types       []ActualType    // ^ & Variable Declaration (EMPTY if no vars declared)
-	Expressions []*Statement    // Variable Declaration & Assignment
-	Identifiers []*Statement    // ^
-	Constant    bool            // Variable Declaration
-	ArraySizes  []int           // Identifier Expression of array
-	Variadic    bool            // Identifier Expression
+	RunCaller   *Statement
+	ArgTypes    []ActualType // ^
+	ArgNames    []string     // ^ & Assignment
+	Types       []ActualType // ^ & Variable Declaration (EMPTY if no vars declared)
+	Expressions []*Statement // Variable Declaration & Assignment
+	Identifiers []*Statement // ^
+	Constant    bool         // Variable Declaration
+	ArraySizes  []int        // Identifier Expression of array
+	Variadic    bool         // Identifier Expression
 	Trace       analysis.SourceTrace
 
 	// Context

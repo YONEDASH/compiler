@@ -253,6 +253,16 @@ func Tokenize(path string) ([]Token, error) {
 			continue
 		}
 
+		if ch == '.' && reader.after() == '.' && reader.at(reader.index+2) == '.' {
+			appendType(Variadic, &identifier, &tokens, reader.index, string(reader.consume())+string(reader.consume())+string(reader.consume()))
+			continue
+		}
+
+		if ch == '.' && reader.after() == '.' && reader.at(reader.index+2) == '?' {
+			appendType(VariadicNoValidate, &identifier, &tokens, reader.index, string(reader.consume())+string(reader.consume())+string(reader.consume()))
+			continue
+		}
+
 		if isWhitespace(ch) {
 			safelyEndIdentifier(&identifier, &tokens, reader.index)
 

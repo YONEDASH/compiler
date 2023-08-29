@@ -74,7 +74,7 @@ func compile(cl *compiler, statement *parser.Statement, context *parser.Scope) (
 		return compileVariableDeclaration(cl, statement)
 	case parser.VariableAssignment:
 		return compileVariableAssignment(cl, statement)
-	case parser.BinaryExpression, parser.IdentifierExpression, parser.NumberLiteral, parser.BooleanLiteral:
+	case parser.BinaryExpression, parser.IdentifierExpression, parser.NumberLiteral, parser.BooleanLiteral, parser.FunctionExpression:
 		return compileExpression(cl, statement, context)
 	case parser.MemoryDeAllocation:
 		return compileMemoryDeAllocation(cl, statement)
@@ -124,6 +124,7 @@ var internalTypes = map[parser.TypeId]string{
 	parser.Float64:       "double",
 	parser.Complex64:     "float _Complex",
 	parser.Complex128:    "double _Complex",
+	parser.String:        "char*",
 }
 
 func getTypeOfC(aType parser.ActualType) string {
@@ -244,6 +245,32 @@ func compileExpression(cl *compiler, statement *parser.Statement, context *parse
 			return "1", nil
 		}
 		return "0", nil
+	}
+
+	if statement.Type == parser.StringLiteral {
+		return "\"" + statement.Value + "\"", nil
+	}
+
+	if statement.Type == parser.FunctionExpression {
+		args := ""
+
+		argCount := len(statement.Expressions)
+		for i := 0; i < argCount; i++ {
+			expr := statement.Expressions[i]
+			compiledExpr, err := compileExpression(cl, expr, context)
+
+			if err != nil {
+				return "", err
+			}
+
+			args += compiledExpr
+
+			if argCount > 0 && i != argCount-1 {
+				args += ", "
+			}
+		}
+
+		return indent(cl) + statement.Value + "(" + args + ");", nil
 	}
 
 	return indent(cl) + fmt.Sprintf("// UNKNOWN EXPRESSION %v", statement), nil

@@ -109,9 +109,11 @@ func processStatement(start lexer.Token, statement *Statement) (bool, error) {
 func demandNewLineOrSemicolon(parser *tokenParser, statement Statement) (Statement, error) {
 	current := parser.current()
 
-	if current.Type != lexer.LF && current.Type != lexer.Semicolon {
+	if current.Type != lexer.LF && current.Type != lexer.Semicolon && current.Type != lexer.EOF {
 		return Statement{}, parseError(current, "Expected new line or semicolon")
 	}
+
+	parser.consume()
 
 	return statement, nil
 }
@@ -132,12 +134,63 @@ func parseStatement(parser *tokenParser) (Statement, error) {
 		return parseVariableDeclaration(parser)
 	case lexer.Identifier, lexer.OpenParenthesis:
 		if current.Type == lexer.Identifier && parser.after().Type == lexer.OpenParenthesis {
-			return Statement{}, parseError(current, "FUNC CALL")
+			return parseFunctionCall(parser)
 		}
 		return parseVariableAssign(parser)
 	}
 
 	return Statement{}, parseError(current, fmt.Sprintf("Unexpected token, statement expected (%d)", current.Type))
+}
+
+func parseFunctionCall(parser *tokenParser) (Statement, error) {
+	current := parser.current()
+
+	identifier := current
+
+	// Consume identifier
+	parser.consume()
+	// Consume (
+	parser.consume()
+
+	// Parse arguments
+	arguments := []*Statement{}
+
+	for {
+		current = parser.current()
+
+		if current.Type == lexer.CloseParenthesis {
+			parser.consume()
+			break
+		}
+
+		expression, err := parseExpression(parser)
+
+		if err != nil {
+			return Statement{}, err
+		}
+
+		arguments = append(arguments, &expression)
+
+		current = parser.current()
+
+		if current.Type == lexer.CloseParenthesis {
+			parser.consume()
+			break
+		}
+
+		if current.Type == lexer.Comma {
+			parser.consume()
+			continue
+		}
+
+		return Statement{}, parseError(current, "Unexpected token in function arguments")
+	}
+
+	return Statement{
+		Type:        FunctionExpression,
+		Value:       identifier.Value,
+		Expressions: arguments,
+	}, nil
 }
 
 func parseExpression(parser *tokenParser) (Statement, error) {
@@ -258,6 +311,11 @@ func parsePrimaryExpression(parser *tokenParser) (Statement, error) {
 
 	switch token.Type {
 	case lexer.Identifier:
+		// Function call
+		if parser.after().Type == lexer.OpenParenthesis {
+			return parseFunctionCall(parser)
+		}
+
 		parser.consume()
 		return Statement{
 			Type:  IdentifierExpression,
@@ -825,6 +883,10 @@ func parseFunction(parser *tokenParser) (Statement, error) {
 		current = parser.current()
 
 		if current.Type == lexer.CloseParenthesis {
+			if len(argTypes) > 0 {
+				return Statement{}, parseError(current, "Expected type")
+			}
+
 			parser.consume()
 			break
 		}
@@ -839,20 +901,37 @@ func parseFunction(parser *tokenParser) (Statement, error) {
 		parser.consume()
 		current = parser.current()
 
-		// Check for identifier
-		if current.Type != lexer.Identifier {
-			return Statement{}, parseError(current, "Expected identifier for argument name")
+		// Check whether type is variadic
+		if current.Type == lexer.Variadic || current.Type == lexer.VariadicNoValidate {
+			parser.consume()
+			argType.Variadic = true
+			argType.SkipValidateVariadicType = current.Type == lexer.VariadicNoValidate
+			current = parser.current()
 		}
 
-		argName := current.Value
+		// Native function do not need arg name
+		if !isNative {
+			// Check for identifier
+			if current.Type != lexer.Identifier {
+				return Statement{}, parseError(current, "Expected identifier for argument name")
+			}
 
-		// Consume identifier
-		parser.consume()
-		current = parser.current()
+			argName := current.Value
+
+			// Consume identifier
+			parser.consume()
+			current = parser.current()
+
+			argNames = append(argNames, argName)
+		} else {
+			// Check for identifier
+			if current.Type == lexer.Identifier {
+				return Statement{}, parseError(current, "Native function does not expect identifiers")
+			}
+		}
 
 		// Push to list
 		argTypes = append(argTypes, argType)
-		argNames = append(argNames, argName)
 
 		// Check for )
 		if current.Type == lexer.CloseParenthesis {
@@ -901,10 +980,10 @@ func parseFunction(parser *tokenParser) (Statement, error) {
 					return Statement{}, err
 				}
 
-				returnTypes = append(returnTypes, returnType)
-
 				// Consume type
 				parser.consume()
+				returnTypes = append(returnTypes, returnType)
+
 				current = parser.current()
 
 				// Check for )
@@ -984,7 +1063,7 @@ func parseType(token lexer.Token) (ActualType, error) {
 	switch token.Value {
 	case "void":
 		return ActualType{Id: Void}, nil
-	case "int8":
+	case "int8", "char":
 		return ActualType{Id: Int8}, nil
 	case "int16":
 		return ActualType{Id: Int16}, nil
@@ -1010,6 +1089,8 @@ func parseType(token lexer.Token) (ActualType, error) {
 		return ActualType{Id: Complex128}, nil
 	case "bool":
 		return ActualType{Id: Bool}, nil
+	case "string":
+		return ActualType{Id: String}, nil
 	default:
 		return ActualType{Id: Custom, CustomName: token.Value}, nil
 	}

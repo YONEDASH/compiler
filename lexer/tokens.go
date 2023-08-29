@@ -31,7 +31,8 @@ const (
 	Division
 	Modulus
 	ArrowRight
- Variadic
+	Variadic
+	VariadicNoValidate
 	Var // Keywords
 	Const
 	Function
